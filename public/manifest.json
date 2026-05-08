@@ -1,0 +1,10 @@
+{
+  "name": "Hábitos",
+  "short_name": "Hábitos",
+  "description": "Registrá tus hábitos diarios",
+  "start_url": "/hoy",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "icons": []
+}
