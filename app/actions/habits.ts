@@ -4,7 +4,6 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { HabitSchema, RecordSchema, UndoRecordSchema, UuidSchema } from '@/lib/validation/schemas'
 import { calcularPuntos } from '@/lib/logic/points'
-import { evaluarRacha } from '@/lib/logic/streak'
 import { evaluarInsignias } from '@/lib/logic/badges'
 import { checkRateLimit } from '@/lib/ratelimit'
 import type { Esfuerzo } from '@/lib/types'
@@ -36,29 +35,27 @@ export async function checkHabitAction(formData: FormData) {
     .from('habits')
     .select('id, esfuerzo, activo')
     .eq('id', parsed.data.habit_id)
-    .eq('user_id', user.id)  // RLS + verificación explícita
+    .eq('user_id', user.id)
     .single()
 
   if (!habit) return { error: 'Hábito no encontrado' }
   if (!habit.activo) return { error: 'Hábito inactivo' }
 
-  // Obtener estado del usuario para calcular racha y puntos server-side
+  // Obtener estado del usuario — la racha ya fue evaluada al cargar la página
   const { data: state } = await supabase
     .from('user_state')
-    .select('*')
+    .select('puntos, streak, best_streak')
     .eq('user_id', user.id)
     .single()
 
   if (!state) return { error: 'Estado de usuario no encontrado' }
 
+  // Puntos calculados server-side usando la racha actual (evaluada al inicio del día)
+  const pts = calcularPuntos(habit.esfuerzo as Esfuerzo, state.streak)
+
   const fechaHoy = today()
-  const { nuevaRacha, rota } = evaluarRacha(state.last_active_date, fechaHoy, state.streak)
-  const streakParaPuntos = rota ? 0 : nuevaRacha
 
-  // Los puntos se calculan server-side con datos de la DB, nunca del cliente
-  const pts = calcularPuntos(habit.esfuerzo as Esfuerzo, streakParaPuntos)
-
-  // Insertar o actualizar registro (upsert por constraint unique)
+  // Guardar registro — el constraint unique(habit_id, fecha) previene duplicados a nivel DB
   const { error: recordError } = await supabase
     .from('records')
     .upsert({
@@ -72,36 +69,25 @@ export async function checkHabitAction(formData: FormData) {
 
   if (recordError) return { error: 'Error al guardar registro' }
 
-  // Actualizar user_state
-  const nuevaRachaFinal = streakParaPuntos + 1
-  const nuevosBestStreak = Math.max(state.best_streak, nuevaRachaFinal)
-
+  // Solo actualizar puntos — la racha NO se toca aquí, se evalúa al inicio del día
+  const nuevosPuntos = state.puntos + pts
   await supabase
     .from('user_state')
     .update({
-      puntos: state.puntos + pts,
-      streak: nuevaRachaFinal,
-      best_streak: nuevosBestStreak,
-      last_active_date: fechaHoy,
+      puntos: nuevosPuntos,
       updated_at: new Date().toISOString(),
     })
     .eq('user_id', user.id)
 
-  // Evaluar insignias nuevas
-  const nuevoState = {
-    ...state,
-    puntos: state.puntos + pts,
-    streak: nuevaRachaFinal,
-    best_streak: nuevosBestStreak,
-  }
-
+  // Evaluar insignias con el estado actualizado
+  const nuevoState = { ...state, puntos: nuevosPuntos }
   const { data: badgesExistentes } = await supabase
     .from('user_badges')
     .select('badge_id')
     .eq('user_id', user.id)
 
   const badgesYa = badgesExistentes?.map(b => b.badge_id) ?? []
-  const nuevasInsignias = evaluarInsignias(nuevoState, badgesYa)
+  const nuevasInsignias = evaluarInsignias(nuevoState as Parameters<typeof evaluarInsignias>[0], badgesYa)
 
   if (nuevasInsignias.length > 0) {
     await supabase.from('user_badges').insert(
