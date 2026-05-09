@@ -44,48 +44,49 @@ export default function HabitCard({
   const completado = localCompletado || !!habit.record
   const weekSet = new Set(weekCompleted)
 
-  async function handleTap() {
-    if (completado || procesando.current) return
+  // Un solo handler para completar Y deshacer — el ref bloquea cualquier doble-tap
+  async function handleToggle() {
+    if (procesando.current) return   // bloqueo sincrónico: ningún tap extra pasa
     procesando.current = true
 
-    if (habit.campo_extra !== 'ninguno') {
-      setShowModal(true)
+    if (completado) {
+      // ── DESHACER ──────────────────────────────────────
+      setLoading(true)
+      setLocalCompletado(false)                // optimista
+
+      const fd = new FormData()
+      fd.set('habit_id', habit.id)
+      fd.set('fecha', today)
+      const result = await undoCheckAction(fd)
+
+      setLoading(false)
       procesando.current = false
-      return
+
+      if (result?.error) setLocalCompletado(true)  // revertir si falló
+    } else {
+      // ── COMPLETAR ─────────────────────────────────────
+      if (habit.campo_extra !== 'ninguno') {
+        setShowModal(true)
+        procesando.current = false
+        return
+      }
+
+      setLocalCompletado(true)                 // optimista
+      setLoading(true)
+
+      const fd = new FormData()
+      fd.set('habit_id', habit.id)
+      const result = await checkHabitAction(fd)
+
+      setLoading(false)
+      procesando.current = false
+
+      if (result?.error) {
+        setLocalCompletado(false)              // revertir si falló
+      } else if (result?.pts) {
+        setPtsAnim(result.pts)
+      }
     }
-
-    setLocalCompletado(true)
-    setLoading(true)
-
-    const fd = new FormData()
-    fd.set('habit_id', habit.id)
-    const result = await checkHabitAction(fd)
-
-    setLoading(false)
-    procesando.current = false
-
-    if (result?.error) {
-      setLocalCompletado(false)
-    } else if (result?.pts) {
-      setPtsAnim(result.pts)
-    }
-  }
-
-  async function handleUndo() {
-    if (!completado || procesando.current) return
-    procesando.current = true
-    setLoading(true)
-    setLocalCompletado(false)
-
-    const fd = new FormData()
-    fd.set('habit_id', habit.id)
-    fd.set('fecha', today)
-    const result = await undoCheckAction(fd)
-
-    setLoading(false)
-    procesando.current = false
-
-    if (result?.error) setLocalCompletado(true)
   }
 
   return (
@@ -205,42 +206,39 @@ export default function HabitCard({
             </div>
           </div>
 
-          {/* Botón check */}
-          <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
-            <button
-              onClick={handleTap}
-              disabled={completado || loading}
-              aria-label={completado ? 'Completado' : `Completar ${habit.nombre}`}
-              className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90"
-              style={{
-                background: completado ? `${color}20` : 'rgba(255,255,255,.05)',
-                border: `2px solid ${completado ? color : 'rgba(255,255,255,.1)'}`,
-                cursor: completado ? 'default' : 'pointer',
-                boxShadow: completado ? `0 0 16px ${color}30` : 'none',
-              }}
-            >
-              {completado ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,.18)' }} />
-              )}
-            </button>
-
-            {/* Botón deshacer — pequeño, discreto */}
-            {completado && (
-              <button
-                onClick={handleUndo}
-                disabled={loading}
-                className="text-[9px] transition-colors"
-                style={{ color: 'rgba(255,255,255,.2)' }}
-                aria-label="Deshacer"
-              >
-                deshacer
-              </button>
+          {/* Botón toggle — completa Y deshace */}
+          <button
+            onClick={handleToggle}
+            disabled={loading}
+            aria-label={completado ? `Deshacer ${habit.nombre}` : `Completar ${habit.nombre}`}
+            className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
+            style={{
+              background: completado ? `${color}20` : 'rgba(255,255,255,.05)',
+              border: `2px solid ${completado ? color : 'rgba(255,255,255,.1)'}`,
+              cursor: loading ? 'wait' : 'pointer',
+              boxShadow: completado ? `0 0 18px ${color}35` : 'none',
+              transition: 'background 0.25s, border-color 0.25s, box-shadow 0.25s',
+            }}
+          >
+            {loading ? (
+              /* Spinner mínimo mientras espera la respuesta */
+              <div
+                style={{
+                  width: 14, height: 14,
+                  borderRadius: '50%',
+                  border: `2px solid ${color}40`,
+                  borderTopColor: color,
+                  animation: 'spin 0.6s linear infinite',
+                }}
+              />
+            ) : completado ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,.2)' }} />
             )}
-          </div>
+          </button>
         </div>
       </div>
 
