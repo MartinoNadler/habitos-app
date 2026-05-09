@@ -108,6 +108,10 @@ export default function ConfigPage() {
   const [userPuntos,    setUserPuntos]    = useState(0)
   const [userStreak,    setUserStreak]    = useState(0)
   const [badgeCount,    setBadgeCount]    = useState(0)
+  const [displayName,   setDisplayName]   = useState('')
+  const [editingName,   setEditingName]   = useState(false)
+  const [nameInput,     setNameInput]     = useState('')
+  const [savingName,    setSavingName]    = useState(false)
 
   const supabase = createClient()
 
@@ -117,6 +121,9 @@ export default function ConfigPage() {
 
     setUserEmail(user.email ?? '')
     setUserCreatedAt(user.created_at ?? '')
+    const nombre = user.user_metadata?.display_name ?? ''
+    setDisplayName(nombre)
+    setNameInput(nombre)
 
     const [h, r, state, badges] = await Promise.all([
       supabase.from('habits').select('*').eq('user_id', user.id).order('creado_en'),
@@ -132,6 +139,21 @@ export default function ConfigPage() {
   }, [])
 
   useEffect(() => { cargarDatos() }, [cargarDatos])
+
+  async function handleSaveName() {
+    const trimmed = nameInput.trim()
+    if (trimmed === displayName) { setEditingName(false); return }
+    setSavingName(true)
+    const { error } = await supabase.auth.updateUser({ data: { display_name: trimmed } })
+    setSavingName(false)
+    if (error) {
+      setToast({ message: 'No se pudo guardar el nombre', type: 'error' })
+    } else {
+      setDisplayName(trimmed)
+      setEditingName(false)
+      setToast({ message: 'Nombre actualizado', type: 'success' })
+    }
+  }
 
   async function handleDeleteHabit(id: string) {
     if (!confirm('¿Eliminar este hábito? Se borrarán todos sus registros.')) return
@@ -173,7 +195,8 @@ export default function ConfigPage() {
 
   // Datos de perfil derivados
   const nivel = getNivel(userPuntos)
-  const initials = userEmail.split('@')[0].slice(0, 2).toUpperCase() || '??'
+  const nameBase = displayName || userEmail.split('@')[0]
+  const initials = nameBase.slice(0, 2).toUpperCase() || '??'
   const memberSince = userCreatedAt
     ? new Date(userCreatedAt).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
     : ''
@@ -222,15 +245,53 @@ export default function ConfigPage() {
 
             {/* Info */}
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white text-sm truncate">{userEmail}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.4)' }}>
-                {nivel.nombre}
-              </p>
-              {memberSince && (
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.25)' }}>
-                  Desde {memberSince}
-                </p>
+              {/* Nombre editable */}
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={nameInput}
+                    onChange={e => setNameInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleSaveName()
+                      if (e.key === 'Escape') { setEditingName(false); setNameInput(displayName) }
+                    }}
+                    placeholder="Tu nombre"
+                    maxLength={30}
+                    className="flex-1 min-w-0 text-sm font-semibold text-white bg-transparent focus:outline-none rounded-lg px-2 py-0.5"
+                    style={{ border: '1px solid rgba(124,111,255,.4)', background: 'rgba(124,111,255,.08)' }}
+                  />
+                  <button
+                    onClick={handleSaveName}
+                    disabled={savingName}
+                    className="text-[11px] font-bold px-2 py-0.5 rounded-lg flex-shrink-0"
+                    style={{ background: 'rgba(124,111,255,.2)', color: '#8B7CFF' }}
+                  >
+                    {savingName ? '…' : 'OK'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditingName(true)}
+                  className="flex items-center gap-1.5 group text-left"
+                >
+                  <span className="font-semibold text-white text-sm truncate">
+                    {displayName || userEmail.split('@')[0]}
+                  </span>
+                  <span
+                    className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    style={{ color: 'rgba(124,111,255,.7)' }}
+                  >
+                    <IconPencil />
+                  </span>
+                </button>
               )}
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.35)' }}>
+                {userEmail}
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.25)' }}>
+                {nivel.nombre}{memberSince ? ` · Desde ${memberSince}` : ''}
+              </p>
             </div>
           </div>
 
