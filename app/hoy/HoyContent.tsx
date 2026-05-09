@@ -21,6 +21,7 @@ interface HoyContentProps {
   today: string
   completadosHoy: number
   totalHabitos: number
+  displayName?: string
 }
 
 function getHeroData(
@@ -28,45 +29,50 @@ function getHeroData(
   completados: number,
   total: number,
   bestStreak: number,
+  nombre?: string,
 ): { titulo: string; subtitulo: string; color: string } {
+  const hola = nombre ? `${nombre}, ` : ''
+  const n = nombre ? `, ${nombre}` : ''
   if (total === 0) return {
-    titulo: 'Bienvenido',
+    titulo: nombre ? `¡Hola, ${nombre}!` : 'Bienvenido',
     subtitulo: 'Agregá tus primeros hábitos desde Configuración',
     color: '#4D8DFF',
   }
   if (streak === 0 && completados === 0) return {
-    titulo: 'Nuevo comienzo',
+    titulo: nombre ? `¿Empezamos${n}?` : 'Nuevo comienzo',
     subtitulo: 'Hoy puede ser el día uno de tu racha',
     color: '#9B5DFF',
   }
   if (streak === 0 && completados > 0 && completados < total) return {
-    titulo: 'Arrancaste bien 💪',
+    titulo: nombre ? `Arrancaste bien${n} 💪` : 'Arrancaste bien 💪',
     subtitulo: `${total - completados} hábito${total - completados > 1 ? 's' : ''} pendiente${total - completados > 1 ? 's' : ''}`,
     color: '#4D8DFF',
   }
   if (streak === 0 && completados === total) return {
-    titulo: '¡Día completo! 🎉',
-    subtitulo: 'Completaste todos tus hábitos',
+    titulo: nombre ? `¡Bien hecho${n}! 🎉` : '¡Día completo! 🎉',
+    subtitulo: 'Completaste todos tus hábitos hoy',
     color: '#5CFF7B',
   }
   if (streak > 0 && completados === 0) return {
     titulo: `🔥 ${streak} día${streak > 1 ? 's' : ''} seguido${streak > 1 ? 's' : ''}`,
-    subtitulo: 'Completá algo hoy para no perder la racha',
+    subtitulo: nombre ? `No rompas la racha${n}, ¡completá algo hoy!` : 'Completá algo hoy para no perder la racha',
     color: '#FF7A3D',
   }
   if (streak === bestStreak && streak > 2) return {
     titulo: `🔥 ${streak} días seguidos`,
-    subtitulo: '¡Mejor racha personal! 🏆',
+    subtitulo: nombre ? `¡Nueva mejor racha personal${n}! 🏆` : '¡Mejor racha personal! 🏆',
     color: '#FFC857',
   }
   if (completados === total) return {
     titulo: `🔥 ${streak} días seguidos`,
-    subtitulo: '¡Racha asegurada! Día completo 🎉',
+    subtitulo: nombre ? `¡Racha asegurada${n}! Día completo 🎉` : '¡Racha asegurada! Día completo 🎉',
     color: '#5CFF7B',
   }
   return {
     titulo: `🔥 ${streak} día${streak > 1 ? 's' : ''} seguido${streak > 1 ? 's' : ''}`,
-    subtitulo: `Vas bien — ${total - completados} más para asegurar la racha`,
+    subtitulo: nombre
+      ? `Vas bien${n} — ${total - completados} más para asegurar la racha`
+      : `Vas bien — ${total - completados} más para asegurar la racha`,
     color: '#FF7A3D',
   }
 }
@@ -78,6 +84,7 @@ export default function HoyContent({
   today,
   completadosHoy,
   totalHabitos,
+  displayName,
 }: HoyContentProps) {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
@@ -86,7 +93,7 @@ export default function HoyContent({
   }, [])
 
   const nivel = getNivel(state.puntos)
-  const { titulo, subtitulo, color } = getHeroData(state.streak, completadosHoy, totalHabitos, state.best_streak)
+  const { titulo, subtitulo, color } = getHeroData(state.streak, completadosHoy, totalHabitos, state.best_streak, displayName)
   const pctDia = totalHabitos > 0 ? Math.round((completadosHoy / totalHabitos) * 100) : 0
   const diaCompleto = completadosHoy === totalHabitos && totalHabitos > 0
 

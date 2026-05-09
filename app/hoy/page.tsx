@@ -161,6 +161,7 @@ export default async function HoyPage() {
 
   const completadosHoy = recordsHoy.length
   const totalHabitos = habits.length
+  const displayName: string | undefined = user.user_metadata?.display_name || undefined
 
   return (
     <div className="min-h-dvh" style={{ background: 'radial-gradient(ellipse at top, #111827, #090B14)' }}>
@@ -172,6 +173,7 @@ export default async function HoyPage() {
         today={hoy}
         completadosHoy={completadosHoy}
         totalHabitos={totalHabitos}
+        displayName={displayName}
       />
       <BottomNav />
     </div>
