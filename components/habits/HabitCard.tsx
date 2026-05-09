@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { checkHabitAction, undoCheckAction } from '@/app/actions/habits'
 import CheckModal from './CheckModal'
 import { PtsFloat } from '@/components/ui/Toast'
@@ -14,43 +14,68 @@ const ESFUERZO_COLOR = {
 
 interface HabitCardProps {
   habit: HabitWithRecord
-  streakPorHabito?: number  // racha específica de este hábito
+  streakPorHabito?: number
 }
 
 export default function HabitCard({ habit, streakPorHabito = 0 }: HabitCardProps) {
   const [showModal, setShowModal] = useState(false)
   const [ptsAnim, setPtsAnim] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
-  const completado = !!habit.record
+  // Estado local optimista: se marca completado inmediatamente al primer tap
+  const [localCompletado, setLocalCompletado] = useState(!!habit.record)
+  // Ref para bloqueo instantáneo — evita que múltiples taps rápidos pasen el guard
+  const procesando = useRef(false)
+
+  const completado = localCompletado || !!habit.record
 
   async function handleTap() {
-    if (completado || loading) return
+    // Bloqueo inmediato con ref — sincrónico, no espera re-render
+    if (completado || procesando.current) return
+    procesando.current = true
 
     if (habit.campo_extra !== 'ninguno') {
       setShowModal(true)
+      procesando.current = false
       return
     }
 
-    // Sin campo extra: marcar directo
+    // Marcar como completado localmente de inmediato (UI optimista)
+    setLocalCompletado(true)
     setLoading(true)
+
     const formData = new FormData()
     formData.set('habit_id', habit.id)
     const result = await checkHabitAction(formData)
-    setLoading(false)
 
-    if (!result?.error && result?.pts) {
+    setLoading(false)
+    procesando.current = false
+
+    if (result?.error) {
+      // Si falló, revertir el estado optimista
+      setLocalCompletado(false)
+    } else if (result?.pts) {
       setPtsAnim(result.pts)
     }
   }
 
   async function handleUndo() {
-    if (!completado || loading) return
+    if (!completado || procesando.current) return
+    procesando.current = true
     setLoading(true)
+    setLocalCompletado(false)
+
     const formData = new FormData()
     formData.set('habit_id', habit.id)
     formData.set('fecha', new Date().toISOString().split('T')[0])
-    await undoCheckAction(formData)
+    const result = await undoCheckAction(formData)
+
     setLoading(false)
+    procesando.current = false
+
+    if (result?.error) {
+      // Si falló, revertir
+      setLocalCompletado(true)
+    }
   }
 
   return (
@@ -139,10 +164,12 @@ export default function HabitCard({ habit, streakPorHabito = 0 }: HabitCardProps
       {showModal && (
         <CheckModal
           habit={habit}
-          onClose={() => setShowModal(false)}
+          onClose={() => { setShowModal(false); procesando.current = false }}
           onSuccess={(pts) => {
             setShowModal(false)
+            setLocalCompletado(true)
             setPtsAnim(pts)
+            procesando.current = false
           }}
         />
       )}
