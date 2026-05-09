@@ -1,45 +1,20 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Heatmap from '@/components/progress/Heatmap'
+import TrendChart from '@/components/progress/TrendChart'
 import ProgressRing from '@/components/ui/ProgressRing'
 import { BADGES } from '@/lib/logic/badges'
 import type { Habit, UserState, UserBadge } from '@/lib/types'
 
-// Iconos SVG inline — sin dependencias externas
-const Icons = {
-  calendar: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-    </svg>
-  ),
-  flame: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"/>
-    </svg>
-  ),
-  zap: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-    </svg>
-  ),
-  check: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-      <polyline points="20 6 9 17 4 12"/>
-    </svg>
-  ),
-}
-
-// Paleta de colores por índice — cada hábito tiene su identidad visual
 const HABIT_PALETTE = [
-  { glow: '#FF7A3D', ring: '#FF7A3D' },
-  { glow: '#4D8DFF', ring: '#4D8DFF' },
-  { glow: '#B26BFF', ring: '#B26BFF' },
-  { glow: '#59E1FF', ring: '#59E1FF' },
-  { glow: '#5CFF7B', ring: '#5CFF7B' },
-  { glow: '#FFC857', ring: '#FFC857' },
-  { glow: '#FF6B9D', ring: '#FF6B9D' },
-  { glow: '#00E5CC', ring: '#00E5CC' },
+  '#FF7A3D', '#4D8DFF', '#B26BFF', '#59E1FF',
+  '#5CFF7B', '#FFC857', '#FF6B9D', '#00E5CC',
 ]
+
+// Sunday=0
+const DIAS_ORDEN_SEMANA = [1, 2, 3, 4, 5, 6, 0] // Lun→Dom
+const DIAS_FULL = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
 interface HabitStats {
   habit: Habit
@@ -55,281 +30,458 @@ interface StatsContentProps {
   habitStats: HabitStats[]
   diasConRegistros: number
   badges: UserBadge[]
+  heatmapData: Record<string, number>
+  pctPromedioGeneral: number
+  mejoraMensual: number
+  completadosEsteMes: number
+  completadosMesPasado: number
+  actividadPorDia: { dia: string; count: number; pct: number }[]
+  mejorDia: { nombre: string; count: number }
+  mejorHabitoNombre: string | null
+  mejorHabitoPct: number
+  puntosSemanales: { label: string; value: number }[]
 }
 
-function getMensaje(streak: number, pct: number, mejorRacha: number): { texto: string; color: string } {
-  if (mejorRacha > 0 && streak >= mejorRacha && streak > 0)
-    return { texto: '¡Mejor racha personal! 🏆', color: '#FFC857' }
-  if (mejorRacha > 0 && streak > 0 && mejorRacha - streak <= 2)
-    return { texto: `A ${mejorRacha - streak} días del récord`, color: '#FF7A3D' }
-  if (pct >= 90) return { texto: 'Muy consistente ⚡', color: '#5CFF7B' }
-  if (pct >= 70) return { texto: 'Buen ritmo 💪',       color: '#4D8DFF' }
-  if (pct >= 50) return { texto: 'Podés mejorar',        color: '#FFC857' }
-  if (streak > 5) return { texto: `En racha 🔥`,          color: '#FF7A3D' }
-  if (pct < 20)   return { texto: 'Retomá el hábito',    color: '#FF6B9D' }
-  return { texto: 'Seguí adelante', color: '#7c6fff' }
-}
-
-function SummaryCard({
-  label,
-  value,
-  sublabel,
-  color,
-  icon,
-}: {
-  label: string
-  value: string | number
-  sublabel?: string
-  color: string
-  icon: React.ReactNode
-}) {
+function ZapIcon({ size = 12, color = '#FFC857' }: { size?: number; color?: string }) {
   return (
-    <div
-      className="flex flex-col justify-between rounded-2xl p-4 border relative overflow-hidden"
-      style={{
-        background: 'linear-gradient(145deg, rgba(22,22,40,.98), rgba(10,10,20,1))',
-        borderColor: 'rgba(255,255,255,.07)',
-        boxShadow: '0 8px 30px rgba(0,0,0,.4)',
-        minHeight: 110,
-      }}
-    >
-      {/* Glow de fondo sutil */}
-      <div
-        className="absolute top-0 right-0 w-20 h-20 rounded-full pointer-events-none"
-        style={{
-          background: `radial-gradient(circle, ${color}18 0%, transparent 70%)`,
-          transform: 'translate(30%, -30%)',
-        }}
-      />
-
-      {/* Icono */}
-      <div
-        className="w-8 h-8 rounded-xl flex items-center justify-center mb-3"
-        style={{ backgroundColor: `${color}18`, color }}
-      >
-        {icon}
-      </div>
-
-      {/* Valor */}
-      <div>
-        <div className="font-mono font-bold text-3xl text-white leading-none tracking-tight">
-          {value}
-        </div>
-        {sublabel && (
-          <div className="text-[10px] mt-0.5" style={{ color: `${color}99` }}>
-            {sublabel}
-          </div>
-        )}
-      </div>
-
-      {/* Label */}
-      <div className="text-xs text-text-muted mt-2 font-medium">{label}</div>
-
-      {/* Línea inferior */}
-      <div className="h-px w-full mt-3 rounded-full" style={{ background: `linear-gradient(90deg, ${color}60, transparent)` }} />
-    </div>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none">
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
   )
 }
 
-function HabitCard({ stats, index, visible }: { stats: HabitStats; index: number; visible: boolean }) {
-  const palette = HABIT_PALETTE[index % HABIT_PALETTE.length]
-  const mensaje = getMensaje(0, stats.pctCumplimiento, stats.mejorRacha)
-
+function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="relative flex items-center gap-4 rounded-3xl p-5 border overflow-hidden"
-      style={{
-        background: 'linear-gradient(180deg, rgba(20,20,35,.95), rgba(10,10,20,.98))',
-        borderColor: 'rgba(255,255,255,.06)',
-        boxShadow: '0 8px 30px rgba(0,0,0,.35)',
-        transform: visible ? 'translateY(0)' : 'translateY(20px)',
-        opacity: visible ? 1 : 0,
-        transition: `all 0.4s cubic-bezier(0.4, 0, 0.2, 1) ${index * 60}ms`,
-      }}
-      onMouseEnter={e => {
-        const el = e.currentTarget
-        el.style.transform = 'translateY(-3px)'
-        el.style.boxShadow = '0 12px 40px rgba(0,0,0,.45)'
-      }}
-      onMouseLeave={e => {
-        const el = e.currentTarget
-        el.style.transform = 'translateY(0)'
-        el.style.boxShadow = '0 8px 30px rgba(0,0,0,.35)'
-      }}
-    >
-      {/* Glow lateral izquierdo */}
-      <div
-        className="absolute left-0 top-4 bottom-4 w-0.5 rounded-full"
-        style={{
-          backgroundColor: palette.glow,
-          boxShadow: `0 0 12px 2px ${palette.glow}60`,
-        }}
-      />
-
-      {/* Emoji + info */}
-      <div className="flex-1 min-w-0 pl-3">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-2xl">{stats.habit.emoji}</span>
-          <div>
-            <p className="font-bold text-white text-base leading-tight">{stats.habit.nombre}</p>
-            <p className="text-xs mt-0.5" style={{ color: mensaje.color }}>
-              {mensaje.texto}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4 mt-3">
-          <div className="flex items-center gap-1.5">
-            <span className="text-amber text-sm">🔥</span>
-            <div>
-              <p className="font-mono font-bold text-white text-lg leading-none">{stats.mejorRacha}</p>
-              <p className="text-text-muted text-[10px]">mejor racha</p>
-            </div>
-          </div>
-          <div className="w-px h-8 bg-surface-3" />
-          <div className="flex items-center gap-1.5">
-            <span className="text-accent text-sm">📅</span>
-            <div>
-              <p className="font-mono font-bold text-white text-lg leading-none">{stats.diasEsteMes}</p>
-              <p className="text-text-muted text-[10px]">días este mes</p>
-            </div>
-          </div>
-          <div className="w-px h-8 bg-surface-3" />
-          <div>
-            <p className="font-mono font-bold text-white text-lg leading-none">{stats.completados}</p>
-            <p className="text-text-muted text-[10px]">total días</p>
-          </div>
-        </div>
-
-        {stats.promedio != null && stats.habit.campo_extra !== 'ninguno' && (
-          <div className="mt-2 pt-2 border-t border-surface-3/50">
-            <span className="text-text-muted text-xs">
-              Promedio: <span className="font-mono text-white">{stats.promedio.toFixed(1)}</span>{' '}
-              <span style={{ color: palette.glow }}>{stats.habit.campo_extra}</span>
-            </span>
-          </div>
-        )}
-      </div>
-
-      {/* Progress Ring */}
-      <ProgressRing
-        value={stats.pctCumplimiento}
-        size={72}
-        stroke={6}
-        color={palette.ring}
-      />
-    </div>
+    <h2 className="text-[11px] font-bold uppercase tracking-widest mb-3"
+      style={{ color: 'rgba(255,255,255,.22)' }}>
+      {children}
+    </h2>
   )
 }
 
-export default function StatsContent({ state, habitStats, diasConRegistros, badges }: StatsContentProps) {
+export default function StatsContent({
+  state, habitStats, diasConRegistros, badges,
+  heatmapData, pctPromedioGeneral, mejoraMensual,
+  completadosEsteMes, completadosMesPasado,
+  actividadPorDia, mejorDia, mejorHabitoNombre, mejorHabitoPct,
+  puntosSemanales,
+}: StatsContentProps) {
   const [visible, setVisible] = useState(false)
+  const [barsVisible, setBarsVisible] = useState(false)
   const badgesDesbloqueados = new Set(badges.map(b => b.badge_id))
 
   useEffect(() => {
-    const t = setTimeout(() => setVisible(true), 50)
-    return () => clearTimeout(t)
+    const t1 = setTimeout(() => setVisible(true), 50)
+    const t2 = setTimeout(() => setBarsVisible(true), 300)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [])
 
-  return (
-    <div
-      className="min-h-screen pb-24"
-      style={{
-        background: 'radial-gradient(circle at top left, #1B1F3A, #090B14)',
-      }}
-    >
-      <div className="px-4 py-6 space-y-6 max-w-2xl mx-auto">
+  const mejoraPositiva = mejoraMensual >= 0
+  const tengoHabits = habitStats.length > 0
+  const maxDowCount = Math.max(...actividadPorDia.map(d => d.count), 1)
 
-        {/* Summary cards */}
+  // Puntos promedio semanal
+  const promPtsSemanal = puntosSemanales.length > 0
+    ? Math.round(puntosSemanales.reduce((s, w) => s + w.value, 0) / puntosSemanales.length)
+    : 0
+
+  // Puntos esta semana vs semana anterior
+  const ptsSemanaActual = puntosSemanales[puntosSemanales.length - 1]?.value ?? 0
+  const ptsSemanaAnterior = puntosSemanales[puntosSemanales.length - 2]?.value ?? 0
+  const deltaSemana = ptsSemanaAnterior > 0
+    ? Math.round(((ptsSemanaActual - ptsSemanaAnterior) / ptsSemanaAnterior) * 100)
+    : 0
+
+  return (
+    <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse at top, #0f1020, #090B14)' }}>
+      <div className="px-4 pt-4 pb-6 space-y-5 max-w-2xl mx-auto">
+
+        {/* ── HERO CARD ── */}
         <div
           style={{
-            transform: visible ? 'translateY(0)' : 'translateY(16px)',
+            background: 'linear-gradient(160deg, rgba(18,20,38,1) 0%, rgba(11,12,22,1) 100%)',
+            border: '1px solid rgba(255,255,255,.07)',
+            borderRadius: 24,
+            padding: '22px',
+            boxShadow: '0 8px 40px rgba(0,0,0,.5)',
+            transform: visible ? 'translateY(0)' : 'translateY(14px)',
             opacity: visible ? 1 : 0,
-            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'all 0.5s cubic-bezier(0.4,0,0.2,1)',
           }}
         >
-          <div className="grid grid-cols-2 gap-3">
-            <SummaryCard
-              icon={Icons.calendar}
-              label="Días registrados"
-              value={diasConRegistros}
-              sublabel="check-ins totales"
-              color="#4D8DFF"
+          <div className="flex items-center gap-4">
+            {/* Izquierda: pct + label + insight */}
+            <div className="flex-1 min-w-0">
+              <p
+                className="font-black leading-none"
+                style={{ fontSize: 56, color: '#fff', letterSpacing: '-2px' }}
+              >
+                {pctPromedioGeneral}
+                <span style={{ fontSize: 28, color: 'rgba(255,255,255,.4)', letterSpacing: '-1px' }}>%</span>
+              </p>
+              <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,.4)' }}>
+                cumplimiento promedio
+              </p>
+              {(completadosMesPasado > 0 || completadosEsteMes > 0) && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: mejoraPositiva ? '#5CFF7B' : '#FF6B9D',
+                  }}>
+                    {mejoraPositiva ? '↑' : '↓'} {Math.abs(mejoraMensual)}%
+                  </span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.25)' }}>
+                    vs mes pasado
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Centro: ring */}
+            <ProgressRing
+              value={pctPromedioGeneral}
+              size={76}
+              stroke={6}
+              color="#7c6fff"
             />
-            <SummaryCard
-              icon={Icons.flame}
-              label="Racha diaria"
-              value={state.best_streak}
-              sublabel="mejor racha"
-              color="#FF7A3D"
-            />
-            <SummaryCard
-              icon={Icons.zap}
-              label="Puntos totales"
-              value={state.puntos}
-              sublabel="acumulados"
-              color="#FFC857"
-            />
-            <SummaryCard
-              icon={Icons.check}
-              label="Hábitos activos"
-              value={habitStats.length}
-              sublabel="en seguimiento"
-              color="#5CFF7B"
-            />
+
+            {/* Derecha: mini stats */}
+            <div className="space-y-2.5 flex-shrink-0">
+              <div className="flex items-center gap-1.5">
+                <span style={{ fontSize: 14 }}>🔥</span>
+                <span className="font-bold text-sm text-white">{state.streak}d</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <ZapIcon size={12} color="#FFC857" />
+                <span className="font-bold text-sm" style={{ color: '#FFC857' }}>{state.puntos}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span style={{ fontSize: 12 }}>✅</span>
+                <span className="font-bold text-sm text-white">{habitStats.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Días registrados */}
+          <div
+            className="flex items-center justify-between mt-4 pt-4"
+            style={{ borderTop: '1px solid rgba(255,255,255,.05)' }}
+          >
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)' }}>
+              Días con actividad
+            </span>
+            <span className="font-mono font-bold text-sm text-white">{diasConRegistros}</span>
           </div>
         </div>
 
-        {/* Hábitos */}
-        {habitStats.length > 0 && (
-          <section>
-            <h2
-              className="text-xs font-semibold uppercase tracking-widest mb-4"
-              style={{ color: 'rgba(255,255,255,0.3)' }}
+        {/* ── INSIGHTS CHIPS ── */}
+        {tengoHabits && (
+          <div
+            className="grid grid-cols-3 gap-2"
+            style={{
+              transform: visible ? 'translateY(0)' : 'translateY(12px)',
+              opacity: visible ? 1 : 0,
+              transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 80ms',
+            }}
+          >
+            {/* Mejor día */}
+            <div
+              className="rounded-2xl p-3 flex flex-col gap-1"
+              style={{
+                background: 'rgba(255,255,255,.03)',
+                border: '1px solid rgba(255,255,255,.06)',
+              }}
             >
-              Por hábito
-            </h2>
+              <span style={{ fontSize: 16 }}>📅</span>
+              <p className="font-bold text-white text-sm leading-tight">{mejorDia.nombre}</p>
+              <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>día más activo</p>
+            </div>
+
+            {/* Mejor hábito */}
+            <div
+              className="rounded-2xl p-3 flex flex-col gap-1"
+              style={{
+                background: 'rgba(255,255,255,.03)',
+                border: '1px solid rgba(255,255,255,.06)',
+              }}
+            >
+              <span style={{ fontSize: 16 }}>🏆</span>
+              <p className="font-bold text-white text-sm leading-tight truncate">
+                {mejorHabitoNombre ?? '—'}
+              </p>
+              <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>{mejorHabitoPct}% cumpl.</p>
+            </div>
+
+            {/* Este mes */}
+            <div
+              className="rounded-2xl p-3 flex flex-col gap-1"
+              style={{
+                background: 'rgba(255,255,255,.03)',
+                border: '1px solid rgba(255,255,255,.06)',
+              }}
+            >
+              <span style={{ fontSize: 16 }}>📈</span>
+              <p className="font-bold text-white text-sm leading-tight">{completadosEsteMes}</p>
+              <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>hábitos este mes</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── HEATMAP ── */}
+        <section
+          style={{
+            transform: visible ? 'translateY(0)' : 'translateY(12px)',
+            opacity: visible ? 1 : 0,
+            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 120ms',
+          }}
+        >
+          <SectionTitle>Actividad — últimos 90 días</SectionTitle>
+          <div
+            className="rounded-2xl p-4"
+            style={{
+              background: 'rgba(255,255,255,.025)',
+              border: '1px solid rgba(255,255,255,.05)',
+            }}
+          >
+            <Heatmap data={heatmapData} dias={90} />
+          </div>
+        </section>
+
+        {/* ── POR HÁBITO ── */}
+        {tengoHabits && (
+          <section
+            style={{
+              transform: visible ? 'translateY(0)' : 'translateY(12px)',
+              opacity: visible ? 1 : 0,
+              transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 160ms',
+            }}
+          >
+            <SectionTitle>Por hábito</SectionTitle>
             <div className="space-y-3">
-              {habitStats.map((s, i) => (
-                <HabitCard key={s.habit.id} stats={s} index={i} visible={visible} />
-              ))}
+              {habitStats.map((s, i) => {
+                const color = HABIT_PALETTE[i % HABIT_PALETTE.length]
+                return (
+                  <div
+                    key={s.habit.id}
+                    className="rounded-2xl p-4"
+                    style={{
+                      background: 'rgba(16,18,32,.95)',
+                      border: `1px solid rgba(255,255,255,.06)`,
+                      transition: 'transform 0.25s ease',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+                    onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{s.habit.emoji}</span>
+                        <div>
+                          <p className="font-bold text-white text-sm">{s.habit.nombre}</p>
+                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+                            {s.completados} días totales
+                            {s.promedio != null && s.habit.campo_extra !== 'ninguno' &&
+                              ` · prom. ${s.promedio.toFixed(1)} ${s.habit.campo_extra}`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {s.mejorRacha >= 2 && (
+                          <span
+                            className="text-[10px] font-bold px-2 py-1 rounded-full"
+                            style={{
+                              background: 'rgba(255,122,61,.12)',
+                              color: '#FF7A3D',
+                              border: '1px solid rgba(255,122,61,.2)',
+                            }}
+                          >
+                            🔥 {s.mejorRacha}d
+                          </span>
+                        )}
+                        <span
+                          className="font-mono font-bold text-base"
+                          style={{ color }}
+                        >
+                          {s.pctCumplimiento}%
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Barra progreso animada */}
+                    <div
+                      className="h-2 rounded-full overflow-hidden"
+                      style={{ background: 'rgba(255,255,255,.06)' }}
+                    >
+                      <div
+                        style={{
+                          height: '100%',
+                          width: barsVisible ? `${s.pctCumplimiento}%` : '0%',
+                          borderRadius: 'inherit',
+                          background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                          boxShadow: `0 0 8px ${color}50`,
+                          transition: `width 1.1s cubic-bezier(0.4,0,0.2,1) ${i * 80}ms`,
+                        }}
+                      />
+                    </div>
+
+                    {/* Mini stats */}
+                    <div className="flex items-center gap-4 mt-2.5">
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
+                        Este mes: <span className="text-white font-semibold">{s.diasEsteMes}d</span>
+                      </span>
+                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
+                        Mejor racha: <span className="text-white font-semibold">{s.mejorRacha}d</span>
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </section>
         )}
 
-        {/* Insignias */}
-        <section>
-          <h2
-            className="text-xs font-semibold uppercase tracking-widest mb-4"
-            style={{ color: 'rgba(255,255,255,0.3)' }}
+        {/* ── ACTIVIDAD POR DÍA ── */}
+        <section
+          style={{
+            transform: visible ? 'translateY(0)' : 'translateY(12px)',
+            opacity: visible ? 1 : 0,
+            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 200ms',
+          }}
+        >
+          <SectionTitle>Actividad por día</SectionTitle>
+          <div
+            className="rounded-2xl p-4 space-y-2"
+            style={{
+              background: 'rgba(255,255,255,.025)',
+              border: '1px solid rgba(255,255,255,.05)',
+            }}
           >
-            Insignias
-          </h2>
-          <div className="grid grid-cols-3 gap-3">
-            {BADGES.map((badge, i) => {
-              const desbloqueado = badgesDesbloqueados.has(badge.id)
+            {DIAS_ORDEN_SEMANA.map(dowIdx => {
+              const d = actividadPorDia[dowIdx]
+              const isBest = d.dia === mejorDia.nombre
+              const barColor = isBest ? '#5CFF7B' : '#7c6fff'
               return (
-                <div
-                  key={badge.id}
-                  className="flex flex-col items-center text-center rounded-2xl p-4 border transition-all"
-                  style={{
-                    background: desbloqueado
-                      ? 'linear-gradient(180deg, rgba(255,184,79,.08), rgba(10,10,20,.98))'
-                      : 'linear-gradient(180deg, rgba(20,20,35,.6), rgba(10,10,20,.98))',
-                    borderColor: desbloqueado ? 'rgba(255,184,79,.2)' : 'rgba(255,255,255,.04)',
-                    opacity: desbloqueado ? 1 : 0.35,
-                    transform: visible ? 'translateY(0)' : 'translateY(16px)',
-                    transition: `all 0.4s cubic-bezier(0.4, 0, 0.2, 1) ${200 + i * 40}ms`,
-                  }}
-                >
-                  <span className="text-2xl mb-1">{badge.emoji}</span>
-                  <span className="text-xs font-semibold text-white leading-tight">{badge.nombre}</span>
-                  <span className="text-[10px] text-text-muted mt-0.5 leading-tight">{badge.descripcion}</span>
+                <div key={d.dia} className="flex items-center gap-3">
+                  <span
+                    className="text-xs font-medium w-8 flex-shrink-0 text-right"
+                    style={{ color: isBest ? '#5CFF7B' : 'rgba(255,255,255,.35)' }}
+                  >
+                    {d.dia}
+                  </span>
+                  <div
+                    className="flex-1 h-2 rounded-full overflow-hidden"
+                    style={{ background: 'rgba(255,255,255,.06)' }}
+                  >
+                    <div
+                      style={{
+                        height: '100%',
+                        width: barsVisible ? `${d.pct}%` : '0%',
+                        borderRadius: 'inherit',
+                        background: isBest
+                          ? 'linear-gradient(90deg, #5CFF7B99, #5CFF7B)'
+                          : `linear-gradient(90deg, ${barColor}66, ${barColor}99)`,
+                        boxShadow: isBest ? '0 0 6px rgba(92,255,123,.4)' : 'none',
+                        transition: `width 0.9s cubic-bezier(0.4,0,0.2,1) ${DIAS_ORDEN_SEMANA.indexOf(dowIdx) * 60}ms`,
+                      }}
+                    />
+                  </div>
+                  <span
+                    className="text-xs font-mono w-6 flex-shrink-0"
+                    style={{ color: isBest ? '#5CFF7B' : 'rgba(255,255,255,.2)' }}
+                  >
+                    {d.count}
+                  </span>
                 </div>
               )
             })}
           </div>
         </section>
+
+        {/* ── EVOLUCIÓN DE PUNTOS ── */}
+        {puntosSemanales.length >= 2 && (
+          <section
+            style={{
+              transform: visible ? 'translateY(0)' : 'translateY(12px)',
+              opacity: visible ? 1 : 0,
+              transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 240ms',
+            }}
+          >
+            <SectionTitle>Evolución de puntos</SectionTitle>
+            <div
+              className="rounded-2xl p-4"
+              style={{
+                background: 'rgba(255,255,255,.025)',
+                border: '1px solid rgba(255,255,255,.05)',
+              }}
+            >
+              {/* Header con stats */}
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <ZapIcon size={14} color="#FFC857" />
+                    <span className="font-mono font-black text-xl text-white">{state.puntos}</span>
+                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>pts totales</span>
+                  </div>
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', marginTop: 2 }}>
+                    Promedio semanal: <span className="text-white font-semibold">{promPtsSemanal} pts</span>
+                  </p>
+                </div>
+                {deltaSemana !== 0 && (
+                  <span
+                    className="text-xs font-bold px-2.5 py-1 rounded-full"
+                    style={{
+                      background: deltaSemana > 0 ? 'rgba(92,255,123,.1)' : 'rgba(255,107,157,.1)',
+                      color: deltaSemana > 0 ? '#5CFF7B' : '#FF6B9D',
+                      border: `1px solid ${deltaSemana > 0 ? 'rgba(92,255,123,.2)' : 'rgba(255,107,157,.2)'}`,
+                    }}
+                  >
+                    {deltaSemana > 0 ? '↑' : '↓'} {Math.abs(deltaSemana)}% esta semana
+                  </span>
+                )}
+              </div>
+              <TrendChart data={puntosSemanales} color="#7c6fff" height={100} />
+            </div>
+          </section>
+        )}
+
+        {/* ── INSIGNIAS ── */}
+        <section
+          style={{
+            transform: visible ? 'translateY(0)' : 'translateY(12px)',
+            opacity: visible ? 1 : 0,
+            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 280ms',
+          }}
+        >
+          <SectionTitle>Insignias</SectionTitle>
+          <div className="grid grid-cols-3 gap-2.5">
+            {BADGES.map((badge, i) => {
+              const desbloqueado = badgesDesbloqueados.has(badge.id)
+              return (
+                <div
+                  key={badge.id}
+                  className="flex flex-col items-center text-center rounded-2xl p-3.5 border"
+                  style={{
+                    background: desbloqueado
+                      ? 'linear-gradient(180deg, rgba(255,184,79,.07), rgba(10,10,20,.98))'
+                      : 'rgba(255,255,255,.02)',
+                    borderColor: desbloqueado ? 'rgba(255,184,79,.18)' : 'rgba(255,255,255,.04)',
+                    opacity: desbloqueado ? 1 : 0.3,
+                    transform: visible ? 'translateY(0)' : 'translateY(12px)',
+                    transition: `all 0.4s cubic-bezier(0.4,0,0.2,1) ${180 + i * 35}ms`,
+                  }}
+                >
+                  <span className="text-2xl mb-1.5">{badge.emoji}</span>
+                  <span className="text-xs font-semibold text-white leading-tight">{badge.nombre}</span>
+                  <span className="text-[10px] mt-1 leading-tight" style={{ color: 'rgba(255,255,255,.3)' }}>
+                    {badge.descripcion}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
       </div>
     </div>
   )

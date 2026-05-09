@@ -5,6 +5,8 @@ import BottomNav from '@/components/layout/BottomNav'
 import StatsContent from './StatsContent'
 import type { Habit, Record as HabitRecord, UserState, UserBadge } from '@/lib/types'
 
+const NOMBRES_DIA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
 function calcularRachaPorHabito(records: HabitRecord[], habitId: string): number {
   const fechas = records
     .filter(r => r.habit_id === habitId)
@@ -13,17 +15,15 @@ function calcularRachaPorHabito(records: HabitRecord[], habitId: string): number
 
   if (fechas.length === 0) return 0
 
-  let maxStreak = 1
-  let curr = 1
-
+  let maxStreak = 1, curr = 1
   for (let i = 1; i < fechas.length; i++) {
-    const prev = new Date(fechas[i - 1] + 'T00:00:00')
-    const cur  = new Date(fechas[i] + 'T00:00:00')
-    const diff = Math.round((cur.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24))
+    const diff = Math.round(
+      (new Date(fechas[i] + 'T00:00:00').getTime() - new Date(fechas[i - 1] + 'T00:00:00').getTime())
+      / (1000 * 60 * 60 * 24)
+    )
     if (diff === 1) { curr++; maxStreak = Math.max(maxStreak, curr) }
     else { curr = 1 }
   }
-
   return maxStreak
 }
 
@@ -32,9 +32,11 @@ export default async function StatsPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  const inicioMes = new Date()
-  inicioMes.setDate(1)
+  const hoy = new Date()
+  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
   const inicioMesStr = inicioMes.toISOString().split('T')[0]
+  const mesActualStr = hoy.toISOString().slice(0, 7)
+  const mesPasadoStr = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1).toISOString().slice(0, 7)
 
   const [stateRes, habitsRes, recordsRes, recordsMesRes, badgesRes] = await Promise.all([
     supabase.from('user_state').select('*').eq('user_id', user.id).single(),
@@ -50,19 +52,73 @@ export default async function StatsPage() {
   const recordsMes = (recordsMesRes.data ?? []) as { habit_id: string; fecha: string }[]
   const badges = (badgesRes.data ?? []) as UserBadge[]
 
+  // ─── Heatmap (últimos 90 días) ────────────────────────────────────────────
+  const hace90 = new Date(hoy)
+  hace90.setDate(hace90.getDate() - 89)
+  const hace90Str = hace90.toISOString().split('T')[0]
+
+  const heatmapData: Record<string, number> = {}
+  const actividadPorDow = [0, 0, 0, 0, 0, 0, 0] // Sun=0
+  let completadosEsteMes = 0
+  let completadosMesPasado = 0
+  const puntosSemanalesMap: Record<string, number> = {}
+
+  records.forEach(r => {
+    // Heatmap
+    if (r.fecha >= hace90Str) {
+      heatmapData[r.fecha] = (heatmapData[r.fecha] ?? 0) + 1
+    }
+    // Actividad por día semana
+    const dow = new Date(r.fecha + 'T00:00:00').getDay()
+    actividadPorDow[dow]++
+    // Comparativa mensual
+    if (r.fecha.startsWith(mesActualStr)) completadosEsteMes++
+    if (r.fecha.startsWith(mesPasadoStr)) completadosMesPasado++
+    // Puntos por semana (lunes de la semana como clave)
+    const d = new Date(r.fecha + 'T00:00:00')
+    const lunes = new Date(d)
+    lunes.setDate(d.getDate() - ((d.getDay() + 6) % 7)) // lunes
+    const wKey = lunes.toISOString().split('T')[0]
+    puntosSemanalesMap[wKey] = (puntosSemanalesMap[wKey] ?? 0) + r.pts
+  })
+
+  // Actividad por día formateada
+  const maxDow = Math.max(...actividadPorDow, 1)
+  const actividadPorDia = actividadPorDow.map((count, i) => ({
+    dia: NOMBRES_DIA[i],
+    count,
+    pct: Math.round((count / maxDow) * 100),
+  }))
+  const mejorDowIdx = actividadPorDow.indexOf(Math.max(...actividadPorDow))
+  const mejorDia = { nombre: NOMBRES_DIA[mejorDowIdx], count: actividadPorDow[mejorDowIdx] }
+
+  // Mejora mensual
+  const mejoraMensual = completadosMesPasado > 0
+    ? Math.round(((completadosEsteMes - completadosMesPasado) / completadosMesPasado) * 100)
+    : completadosEsteMes > 0 ? 100 : 0
+
+  // Puntos por semana — últimas 8 semanas ordenadas
+  const puntosSemanales = Object.entries(puntosSemanalesMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-8)
+    .map(([fecha, pts]) => {
+      const d = new Date(fecha + 'T00:00:00')
+      return { label: `${d.getDate()}/${d.getMonth() + 1}`, value: pts }
+    })
+
+  // ─── Habit stats ──────────────────────────────────────────────────────────
   const diasConRegistros = new Set(records.map(r => r.fecha)).size
   const diasDesdeCreacion = Math.max(
-    ...habits.map(h => {
-      const diff = Math.round((Date.now() - new Date(h.creado_en).getTime()) / (1000 * 60 * 60 * 24))
-      return Math.max(diff, 1)
-    }),
+    ...habits.map(h => Math.max(
+      Math.round((Date.now() - new Date(h.creado_en).getTime()) / (1000 * 60 * 60 * 24)), 1
+    )),
     1
   )
 
   const habitStats = habits.map(h => {
-    const hRecords = records.filter(r => r.habit_id === h.id)
-    const completados = hRecords.length
-    const conValor = hRecords.filter(r => r.valor != null)
+    const hRec = records.filter(r => r.habit_id === h.id)
+    const completados = hRec.length
+    const conValor = hRec.filter(r => r.valor != null)
     const promedio = conValor.length > 0
       ? conValor.reduce((acc, r) => acc + (r.valor ?? 0), 0) / conValor.length
       : null
@@ -73,14 +129,32 @@ export default async function StatsPage() {
     return { habit: h, completados, promedio, mejorRacha, pctCumplimiento, diasEsteMes }
   })
 
+  const pctPromedioGeneral = habitStats.length > 0
+    ? Math.round(habitStats.reduce((s, h) => s + h.pctCumplimiento, 0) / habitStats.length)
+    : 0
+
+  const mejorHabito = habitStats.length > 0
+    ? habitStats.reduce((a, b) => a.pctCumplimiento >= b.pctCumplimiento ? a : b)
+    : null
+
   return (
-    <div className="min-h-dvh" style={{ background: 'radial-gradient(circle at top left, #1B1F3A, #090B14)' }}>
-      <TopBar titulo="Estadísticas" puntos={state?.puntos} />
+    <div className="min-h-dvh" style={{ background: 'radial-gradient(ellipse at top, #0f1020, #090B14)' }}>
+      <TopBar titulo="Progreso" puntos={state?.puntos} />
       <StatsContent
         state={state}
         habitStats={habitStats}
         diasConRegistros={diasConRegistros}
         badges={badges}
+        heatmapData={heatmapData}
+        pctPromedioGeneral={pctPromedioGeneral}
+        mejoraMensual={mejoraMensual}
+        completadosEsteMes={completadosEsteMes}
+        completadosMesPasado={completadosMesPasado}
+        actividadPorDia={actividadPorDia}
+        mejorDia={mejorDia}
+        mejorHabitoNombre={mejorHabito?.habit.nombre ?? null}
+        mejorHabitoPct={mejorHabito?.pctCumplimiento ?? 0}
+        puntosSemanales={puntosSemanales}
       />
       <BottomNav />
     </div>
