@@ -20,8 +20,11 @@ export default function TopBar({ titulo, fecha, puntos }: TopBarProps) {
         {nivel && (
           <div className="flex items-center gap-2 bg-surface-2 rounded-xl px-3 py-1.5">
             <span className="text-xs text-text-dim">{nivel.nombre}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="#FFC857" stroke="none">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
             <span className="font-mono text-amber font-bold text-sm">
-              {puntos} pts
+              {puntos}
             </span>
           </div>
         )}

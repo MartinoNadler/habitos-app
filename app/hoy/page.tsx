@@ -164,9 +164,11 @@ export default async function HoyPage() {
                 <p className="text-3xl font-mono font-bold text-amber">{state.streak} días</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-text-dim text-sm">Puntos</p>
-              <p className="text-2xl font-mono font-bold text-white">{state.puntos}</p>
+            <div className="text-right flex items-center gap-1.5 justify-end">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFC857" stroke="none">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+              <p className="text-2xl font-mono font-bold text-amber">{state.puntos}</p>
             </div>
           </div>
 
