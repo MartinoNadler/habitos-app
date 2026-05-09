@@ -6,22 +6,11 @@ import { HabitSchema, RecordSchema, UndoRecordSchema, UuidSchema } from '@/lib/v
 import { calcularPuntos } from '@/lib/logic/points'
 import { evaluarRacha } from '@/lib/logic/streak'
 import { evaluarInsignias } from '@/lib/logic/badges'
+import { checkRateLimit } from '@/lib/ratelimit'
 import type { Esfuerzo } from '@/lib/types'
 
 function today(): string {
   return new Date().toISOString().split('T')[0]
-}
-
-/** Rate limiting simple usando Supabase: máximo 30 operaciones/min por usuario */
-async function checkRateLimit(supabase: Awaited<ReturnType<typeof createClient>>, userId: string): Promise<boolean> {
-  const since = new Date(Date.now() - 60_000).toISOString()
-  const { count } = await supabase
-    .from('records')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', since)
-
-  return (count ?? 0) < 30
 }
 
 export async function checkHabitAction(formData: FormData) {
@@ -38,9 +27,9 @@ export async function checkHabitAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { error: 'No autenticado' }
 
-  // Rate limiting
-  const ok = await checkRateLimit(supabase, user.id)
-  if (!ok) return { error: 'Demasiadas operaciones. Esperá un minuto.' }
+  // Rate limiting: máximo 20 checks por minuto por usuario
+  const { allowed } = checkRateLimit(user.id, 'check_habit', { maxRequests: 20, windowMs: 60_000 })
+  if (!allowed) return { error: 'Demasiadas operaciones. Esperá un minuto.' }
 
   // Verificar que el hábito pertenece al usuario autenticado
   const { data: habit } = await supabase

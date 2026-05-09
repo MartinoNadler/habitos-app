@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { RewardSchema, RedeemSchema, UuidSchema } from '@/lib/validation/schemas'
+import { checkRateLimit } from '@/lib/ratelimit'
 
 /** Límite de canjes por mes según costo */
 function getLimiteMensual(costo: number): { limite: number; meses: number } {
@@ -29,6 +30,10 @@ export async function redeemRewardAction(formData: FormData) {
     .single()
 
   if (!reward) return { error: 'Recompensa no encontrada' }
+
+  // Rate limiting: máximo 5 canjes por minuto
+  const { allowed } = checkRateLimit(user.id, 'redeem', { maxRequests: 5, windowMs: 60_000 })
+  if (!allowed) return { error: 'Demasiados canjes. Esperá un minuto.' }
 
   // Verificar saldo — server-side, nunca confiar en el cliente
   const { data: state } = await supabase
