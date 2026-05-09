@@ -1,9 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import { getNivel } from '@/lib/types'
 import TopBar from '@/components/layout/TopBar'
 import BottomNav from '@/components/layout/BottomNav'
-import HabitCard from '@/components/habits/HabitCard'
+import HoyContent from './HoyContent'
 import { evaluarRachaDiaria } from '@/lib/logic/streak'
 import { evaluarInsignias } from '@/lib/logic/badges'
 import type { Habit, Record as HabitRecord, HabitWithRecord, UserState } from '@/lib/types'
@@ -17,32 +16,42 @@ function formatearFecha(dateStr: string): string {
   return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
+/** Calcula la racha actual de un hábito (días consecutivos hacia atrás desde hoy o ayer) */
+function calcularStreakHabito(
+  habitId: string,
+  records: { habit_id: string; fecha: string }[],
+  today: string,
+): number {
+  const fechas = new Set(records.filter(r => r.habit_id === habitId).map(r => r.fecha))
+  const start = new Date(today + 'T00:00:00')
+  // Si no completó hoy, empezar desde ayer
+  if (!fechas.has(today)) start.setDate(start.getDate() - 1)
+  let streak = 0
+  const d = new Date(start)
+  while (streak < 30) {
+    const ds = d.toISOString().split('T')[0]
+    if (!fechas.has(ds)) break
+    streak++
+    d.setDate(d.getDate() - 1)
+  }
+  return streak
+}
+
 async function actualizarEstadoDiario(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  state: UserState
-) {
+  state: UserState,
+): Promise<UserState> {
   const hoy = fechaHoy()
-
-  // Solo evaluar una vez por día
   if (state.last_active_date === hoy) return state
 
   const ayer = new Date()
   ayer.setDate(ayer.getDate() - 1)
   const ayerStr = ayer.toISOString().split('T')[0]
 
-  // Contar hábitos completados ayer y total activos — en paralelo
   const [recordsAyer, habitsTotal] = await Promise.all([
-    supabase
-      .from('records')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('fecha', ayerStr),
-    supabase
-      .from('habits')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('activo', true),
+    supabase.from('records').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('fecha', ayerStr),
+    supabase.from('habits').select('*', { count: 'exact', head: true }).eq('user_id', userId).eq('activo', true),
   ])
 
   const { nuevaRacha, rota, bonusPts } = evaluarRachaDiaria({
@@ -76,22 +85,13 @@ async function actualizarEstadoDiario(
     })
     .eq('user_id', userId)
 
-  // Evaluar insignias con el estado actualizado
-  const { data: badgesExistentes } = await supabase
-    .from('user_badges')
-    .select('badge_id')
-    .eq('user_id', userId)
-
+  const { data: badgesExistentes } = await supabase.from('user_badges').select('badge_id').eq('user_id', userId)
   const badgesYa = badgesExistentes?.map(b => b.badge_id) ?? []
   const nuevas = evaluarInsignias(nuevoState, badgesYa)
-
   if (nuevas.length > 0) {
-    await supabase.from('user_badges').insert(
-      nuevas.map(badge_id => ({ user_id: userId, badge_id }))
-    )
+    await supabase.from('user_badges').insert(nuevas.map(badge_id => ({ user_id: userId, badge_id })))
   }
 
-  // Log solo en desarrollo
   if (process.env.NODE_ENV === 'development') {
     console.log(`Racha: ${state.streak} → ${nuevaRacha}${rota ? ' (rota)' : ''}${bonusPts > 0 ? ` +${bonusPts}pts bonus` : ''}`)
   }
@@ -106,141 +106,73 @@ export default async function HoyPage() {
 
   const hoy = fechaHoy()
 
-  const [stateRes, habitsRes, recordsRes] = await Promise.all([
+  // Últimos 7 días (para mini barras semanales)
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(hoy + 'T00:00:00')
+    d.setDate(d.getDate() - 6 + i) // de más viejo (0) a hoy (6)
+    return d.toISOString().split('T')[0]
+  })
+  const hace7DiasStr = weekDates[0]
+
+  // Últimos 30 días (para calcular streak por hábito con precisión)
+  const hace30 = new Date(hoy + 'T00:00:00')
+  hace30.setDate(hace30.getDate() - 29)
+  const hace30DiasStr = hace30.toISOString().split('T')[0]
+
+  const [stateRes, habitsRes, recordsHoyRes, recordsRecientesRes] = await Promise.all([
     supabase.from('user_state').select('*').eq('user_id', user.id).single(),
     supabase.from('habits').select('*').eq('user_id', user.id).eq('activo', true).order('creado_en'),
     supabase.from('records').select('*').eq('user_id', user.id).eq('fecha', hoy),
+    supabase.from('records').select('habit_id, fecha').eq('user_id', user.id).gte('fecha', hace30DiasStr),
   ])
 
-  // Si el trigger aún no creó el user_state, lo creamos manualmente
+  // Crear user_state si el trigger aún no lo generó
   if (!stateRes.data) {
     await supabase.from('user_state').insert({ user_id: user.id })
     stateRes.data = {
       user_id: user.id,
-      puntos: 0,
-      streak: 0,
-      best_streak: 0,
+      puntos: 0, streak: 0, best_streak: 0,
       last_active_date: null,
       updated_at: new Date().toISOString(),
     }
   }
 
   const state = await actualizarEstadoDiario(supabase, user.id, stateRes.data as UserState)
-
   const habits = (habitsRes.data ?? []) as Habit[]
-  const records = (recordsRes.data ?? []) as HabitRecord[]
+  const recordsHoy = (recordsHoyRes.data ?? []) as HabitRecord[]
+  const recordsRecientes = (recordsRecientesRes.data ?? []) as { habit_id: string; fecha: string }[]
 
-  const recordMap = new Map(records.map(r => [r.habit_id, r]))
+  const recordMap = new Map(recordsHoy.map(r => [r.habit_id, r]))
+  const weekDateSet = new Set(weekDates)
 
-  const habitsConRecord: HabitWithRecord[] = habits.map(h => ({
-    ...h,
-    record: recordMap.get(h.id),
-  }))
+  const habitDatos = habits.map((h, index) => {
+    const habit: HabitWithRecord = { ...h, record: recordMap.get(h.id) }
 
-  const completadosHoy = records.length
+    // Streak actual por hábito
+    const streakActual = calcularStreakHabito(h.id, recordsRecientes, hoy)
+
+    // Días de la semana completados
+    const weekCompleted = recordsRecientes
+      .filter(r => r.habit_id === h.id && weekDateSet.has(r.fecha))
+      .map(r => r.fecha)
+
+    return { habit, index, streakActual, weekCompleted }
+  })
+
+  const completadosHoy = recordsHoy.length
   const totalHabitos = habits.length
-  const nivel = getNivel(state.puntos)
-
-  // % de cumplimiento de hoy para mostrar si va camino a mantener la racha
-  const pctHoy = totalHabitos > 0 ? Math.round((completadosHoy / totalHabitos) * 100) : 0
-  const vaAMantenerRacha = pctHoy >= 90
 
   return (
-    <div className="min-h-dvh bg-app-bg pb-20">
-      <TopBar
-        titulo="Mis Hábitos"
-        fecha={formatearFecha(hoy)}
-        puntos={state.puntos}
+    <div className="min-h-dvh" style={{ background: 'radial-gradient(ellipse at top, #111827, #090B14)' }}>
+      <TopBar titulo="Hoy" fecha={formatearFecha(hoy)} puntos={state.puntos} />
+      <HoyContent
+        state={state}
+        habitDatos={habitDatos}
+        weekDates={weekDates}
+        today={hoy}
+        completadosHoy={completadosHoy}
+        totalHabitos={totalHabitos}
       />
-
-      <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
-        {/* Streak Hero */}
-        <div className="bg-surface border border-surface-3 rounded-xl3 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">🔥</span>
-              <div>
-                <p className="text-text-dim text-sm">Racha actual</p>
-                <p className="text-3xl font-mono font-bold text-amber">{state.streak} días</p>
-              </div>
-            </div>
-            <div className="text-right flex items-center gap-1.5 justify-end">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="#FFC857" stroke="none">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-              <p className="text-2xl font-mono font-bold text-amber">{state.puntos}</p>
-            </div>
-          </div>
-
-          {/* Barra XP */}
-          <div>
-            <div className="flex justify-between text-xs text-text-muted mb-1.5">
-              <span>{nivel.nombre}</span>
-              <span>{nivel.progreso}%</span>
-            </div>
-            <div className="h-2 bg-surface-2 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-accent rounded-full transition-all duration-700"
-                style={{ width: `${nivel.progreso}%` }}
-              />
-            </div>
-            {nivel.max !== Infinity && (
-              <p className="text-xs text-text-muted mt-1">
-                {state.puntos} / {nivel.max} pts para siguiente nivel
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Progreso del día */}
-        <div className="flex items-center justify-between px-1">
-          <p className="text-text-dim text-sm">
-            {completadosHoy === totalHabitos && totalHabitos > 0
-              ? '¡Día completo! 🎉'
-              : `${completadosHoy} de ${totalHabitos} hábitos`}
-          </p>
-          <div className="flex items-center gap-2">
-            {/* Indicador si va a mantener la racha hoy */}
-            {totalHabitos > 0 && state.streak > 0 && (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                vaAMantenerRacha
-                  ? 'bg-green/10 text-green'
-                  : 'bg-amber/10 text-amber'
-              }`}>
-                {vaAMantenerRacha ? '✓ racha segura' : `${pctHoy}% — necesitás 90%`}
-              </span>
-            )}
-            <div className="flex gap-1">
-              {habits.map(h => (
-                <div
-                  key={h.id}
-                  className={`w-2.5 h-2.5 rounded-full ${recordMap.has(h.id) ? 'bg-green' : 'bg-surface-3'}`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Lista de hábitos */}
-        <div className="space-y-3">
-          {habitsConRecord.length === 0 ? (
-            <div className="text-center py-12 text-text-muted">
-              <p className="text-4xl mb-3">🌱</p>
-              <p>No tenés hábitos activos</p>
-              <p className="text-sm mt-1">Agregá uno desde Configuración</p>
-            </div>
-          ) : (
-            habitsConRecord.map(h => (
-              <HabitCard
-                key={h.id}
-                habit={h}
-                streakPorHabito={0}
-              />
-            ))
-          )}
-        </div>
-      </main>
-
       <BottomNav />
     </div>
   )

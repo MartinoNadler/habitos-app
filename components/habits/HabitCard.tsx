@@ -6,30 +6,45 @@ import CheckModal from './CheckModal'
 import { PtsFloat } from '@/components/ui/Toast'
 import type { HabitWithRecord } from '@/lib/types'
 
-const ESFUERZO_COLOR = {
-  facil:    'text-green',
-  moderado: 'text-amber',
-  dificil:  'text-red-soft',
-}
+const HABIT_COLORS = [
+  '#FF7A3D', '#4D8DFF', '#B26BFF', '#59E1FF',
+  '#5CFF7B', '#FFC857', '#FF6B9D', '#00E5CC',
+]
+
+// Sunday=0 → D, Monday=1 → L, ...
+const DIAS_LABEL = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
 
 interface HabitCardProps {
   habit: HabitWithRecord
-  streakPorHabito?: number
+  index: number
+  streakActual: number
+  weekDates: string[]     // últimos 7 días YYYY-MM-DD, de viejo a nuevo
+  weekCompleted: string[] // cuáles de esos 7 están completados
+  today: string
+  visible: boolean
 }
 
-export default function HabitCard({ habit, streakPorHabito = 0 }: HabitCardProps) {
-  const [showModal, setShowModal] = useState(false)
-  const [ptsAnim, setPtsAnim] = useState<number | null>(null)
-  const [loading, setLoading] = useState(false)
-  // Estado local optimista: se marca completado inmediatamente al primer tap
+export default function HabitCard({
+  habit,
+  index,
+  streakActual,
+  weekDates,
+  weekCompleted,
+  today,
+  visible,
+}: HabitCardProps) {
+  const color = HABIT_COLORS[index % HABIT_COLORS.length]
+
+  const [showModal, setShowModal]       = useState(false)
+  const [ptsAnim, setPtsAnim]           = useState<number | null>(null)
+  const [loading, setLoading]           = useState(false)
   const [localCompletado, setLocalCompletado] = useState(!!habit.record)
-  // Ref para bloqueo instantáneo — evita que múltiples taps rápidos pasen el guard
   const procesando = useRef(false)
 
   const completado = localCompletado || !!habit.record
+  const weekSet = new Set(weekCompleted)
 
   async function handleTap() {
-    // Bloqueo inmediato con ref — sincrónico, no espera re-render
     if (completado || procesando.current) return
     procesando.current = true
 
@@ -39,19 +54,17 @@ export default function HabitCard({ habit, streakPorHabito = 0 }: HabitCardProps
       return
     }
 
-    // Marcar como completado localmente de inmediato (UI optimista)
     setLocalCompletado(true)
     setLoading(true)
 
-    const formData = new FormData()
-    formData.set('habit_id', habit.id)
-    const result = await checkHabitAction(formData)
+    const fd = new FormData()
+    fd.set('habit_id', habit.id)
+    const result = await checkHabitAction(fd)
 
     setLoading(false)
     procesando.current = false
 
     if (result?.error) {
-      // Si falló, revertir el estado optimista
       setLocalCompletado(false)
     } else if (result?.pts) {
       setPtsAnim(result.pts)
@@ -64,101 +77,171 @@ export default function HabitCard({ habit, streakPorHabito = 0 }: HabitCardProps
     setLoading(true)
     setLocalCompletado(false)
 
-    const formData = new FormData()
-    formData.set('habit_id', habit.id)
-    formData.set('fecha', new Date().toISOString().split('T')[0])
-    const result = await undoCheckAction(formData)
+    const fd = new FormData()
+    fd.set('habit_id', habit.id)
+    fd.set('fecha', today)
+    const result = await undoCheckAction(fd)
 
     setLoading(false)
     procesando.current = false
 
-    if (result?.error) {
-      // Si falló, revertir
-      setLocalCompletado(true)
-    }
+    if (result?.error) setLocalCompletado(true)
   }
 
   return (
     <>
-      {ptsAnim !== null && (
-        <PtsFloat pts={ptsAnim} onDone={() => setPtsAnim(null)} />
-      )}
+      {ptsAnim !== null && <PtsFloat pts={ptsAnim} onDone={() => setPtsAnim(null)} />}
 
       <div
-        className={`relative flex items-center gap-4 bg-surface rounded-xl3 px-4 py-4 border transition-all ${
-          completado
-            ? 'border-green/30 bg-green/5'
-            : 'border-surface-3 active:scale-[0.98]'
-        } ${loading ? 'opacity-60' : ''}`}
+        style={{
+          position: 'relative',
+          background: completado
+            ? `linear-gradient(145deg, ${color}0d, rgba(12,13,24,1))`
+            : 'rgba(16,18,32,0.95)',
+          border: `1px solid ${completado ? `${color}30` : 'rgba(255,255,255,.06)'}`,
+          borderRadius: 16,
+          padding: '14px 14px 12px 18px',
+          opacity: loading ? 0.6 : 1,
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          transition: `opacity 0.2s, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1) ${index * 50}ms, border-color 0.3s`,
+        }}
       >
-        <button
-          onClick={handleTap}
-          disabled={completado || loading}
-          className="flex items-center gap-4 flex-1 text-left"
-          aria-label={`Completar ${habit.nombre}`}
-        >
-          {/* Check circle */}
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-colors ${
-            completado ? 'bg-green border-green' : 'border-surface-3 bg-surface-2'
-          }`}>
-            {completado ? (
-              <svg className="w-5 h-5 text-app-bg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            ) : (
-              <span className="text-xl">{habit.emoji}</span>
-            )}
+        {/* Accent bar izquierdo */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 0, top: 10, bottom: 10,
+            width: 3,
+            borderRadius: 3,
+            background: completado ? color : `${color}60`,
+            transition: 'background 0.3s',
+          }}
+        />
+
+        <div className="flex items-center gap-3">
+          {/* Emoji */}
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+            style={{ background: `${color}12` }}
+          >
+            {habit.emoji}
           </div>
 
+          {/* Info central */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={`font-semibold text-base ${completado ? 'text-text-dim line-through' : 'text-white'}`}>
+            {/* Nombre + badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-sm text-white leading-tight">
                 {habit.nombre}
               </span>
-              {streakPorHabito >= 3 && (
-                <span className="text-xs bg-amber/10 text-amber px-1.5 py-0.5 rounded-full font-medium">
-                  🔥 {streakPorHabito}
+              {streakActual >= 2 && (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: 'rgba(255,122,61,.12)',
+                    color: '#FF7A3D',
+                    border: '1px solid rgba(255,122,61,.2)',
+                  }}
+                >
+                  🔥 {streakActual}d
+                </span>
+              )}
+              {completado && habit.record && (
+                <span
+                  className="text-[10px] font-mono font-bold flex-shrink-0"
+                  style={{ color }}
+                >
+                  +{habit.record.pts}
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className={`text-xs ${ESFUERZO_COLOR[habit.esfuerzo]}`}>
-                {habit.esfuerzo}
-              </span>
-              <span className="text-text-muted text-xs">·</span>
-              <span className="text-text-muted text-xs">{habit.categoria}</span>
+            {/* Subtítulo */}
+            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.28)' }}>
+              {habit.esfuerzo}&nbsp;·&nbsp;{habit.categoria}
               {completado && habit.record?.valor != null && (
-                <>
-                  <span className="text-text-muted text-xs">·</span>
-                  <span className="text-text-dim text-xs font-mono">
-                    {habit.record.valor} {habit.campo_extra}
-                  </span>
+                <> &nbsp;·&nbsp;
+                  <span className="font-mono">{habit.record.valor} {habit.campo_extra}</span>
                 </>
               )}
+            </p>
+
+            {/* Mini barras semanales */}
+            <div className="flex items-end gap-1 mt-2.5">
+              {weekDates.map((date) => {
+                const done = weekSet.has(date) || (date === today && completado)
+                const isToday = date === today
+                const dayLabel = DIAS_LABEL[new Date(date + 'T00:00:00').getDay()]
+                return (
+                  <div key={date} className="flex flex-col items-center gap-0.5">
+                    <div
+                      style={{
+                        width: 7,
+                        height: 14,
+                        borderRadius: 2,
+                        background: done
+                          ? color
+                          : isToday
+                          ? `${color}20`
+                          : 'rgba(255,255,255,.06)',
+                        border: isToday && !done ? `1px solid ${color}35` : 'none',
+                        transition: 'background 0.3s',
+                        boxShadow: done && isToday ? `0 0 6px ${color}80` : 'none',
+                      }}
+                    />
+                    <span
+                      style={{
+                        fontSize: 8,
+                        lineHeight: 1,
+                        color: isToday ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.2)',
+                        fontWeight: isToday ? 700 : 400,
+                      }}
+                    >
+                      {dayLabel}
+                    </span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
-          {completado && habit.record && (
-            <span className="text-amber text-sm font-mono font-bold flex-shrink-0">
-              +{habit.record.pts}
-            </span>
-          )}
-        </button>
+          {/* Botón check */}
+          <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={handleTap}
+              disabled={completado || loading}
+              aria-label={completado ? 'Completado' : `Completar ${habit.nombre}`}
+              className="w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-90"
+              style={{
+                background: completado ? `${color}20` : 'rgba(255,255,255,.05)',
+                border: `2px solid ${completado ? color : 'rgba(255,255,255,.1)'}`,
+                cursor: completado ? 'default' : 'pointer',
+                boxShadow: completado ? `0 0 16px ${color}30` : 'none',
+              }}
+            >
+              {completado ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,.18)' }} />
+              )}
+            </button>
 
-        {/* Botón deshacer */}
-        {completado && (
-          <button
-            onClick={handleUndo}
-            disabled={loading}
-            className="p-2 text-text-muted hover:text-red-soft transition-colors"
-            aria-label="Deshacer"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 0 1 8 8v2M3 10l6 6m-6-6l6-6" />
-            </svg>
-          </button>
-        )}
+            {/* Botón deshacer — pequeño, discreto */}
+            {completado && (
+              <button
+                onClick={handleUndo}
+                disabled={loading}
+                className="text-[9px] transition-colors"
+                style={{ color: 'rgba(255,255,255,.2)' }}
+                aria-label="Deshacer"
+              >
+                deshacer
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {showModal && (
