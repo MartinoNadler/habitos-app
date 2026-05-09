@@ -147,6 +147,12 @@ export async function undoCheckAction(formData: FormData) {
   return { ok: true }
 }
 
+function parseDiasSemana(formData: FormData): number[] | null {
+  const val = formData.get('dias_semana')
+  if (!val) return null
+  try { return JSON.parse(val as string) } catch { return null }
+}
+
 export async function createHabitAction(formData: FormData) {
   const raw = {
     nombre: formData.get('nombre'),
@@ -154,7 +160,8 @@ export async function createHabitAction(formData: FormData) {
     categoria: formData.get('categoria'),
     esfuerzo: formData.get('esfuerzo'),
     frecuencia: formData.get('frecuencia'),
-    meta_semanal: formData.get('meta_semanal') ? Number(formData.get('meta_semanal')) : undefined,
+    meta_semanal: formData.get('meta_semanal') ? Number(formData.get('meta_semanal')) : null,
+    dias_semana: parseDiasSemana(formData),
     campo_extra: formData.get('campo_extra'),
   }
 
@@ -183,7 +190,8 @@ export async function updateHabitAction(formData: FormData) {
     categoria: formData.get('categoria'),
     esfuerzo: formData.get('esfuerzo'),
     frecuencia: formData.get('frecuencia'),
-    meta_semanal: formData.get('meta_semanal') ? Number(formData.get('meta_semanal')) : undefined,
+    meta_semanal: formData.get('meta_semanal') ? Number(formData.get('meta_semanal')) : null,
+    dias_semana: parseDiasSemana(formData),
     campo_extra: formData.get('campo_extra'),
   }
 

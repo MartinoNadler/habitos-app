@@ -1,6 +1,7 @@
 export type Categoria = 'salud' | 'estudio' | 'sueño' | 'otro'
 export type Esfuerzo = 'facil' | 'moderado' | 'dificil'
-export type Frecuencia = 'diario' | 'semanal'
+// 'semanal' se mantiene por compatibilidad con datos existentes, se trata como 'diario'
+export type Frecuencia = 'diario' | 'semanal' | 'veces_semana' | 'dias_semana'
 export type CampoExtra = 'minutos' | 'horas' | 'vasos' | 'paginas' | 'nota' | 'ninguno'
 
 export interface Habit {
@@ -11,7 +12,8 @@ export interface Habit {
   categoria: Categoria
   esfuerzo: Esfuerzo
   frecuencia: Frecuencia
-  meta_semanal: number
+  meta_semanal: number | null   // para 'veces_semana': objetivo por semana (2-6)
+  dias_semana: number[] | null  // para 'dias_semana': [0..6] donde 0=Dom
   campo_extra: CampoExtra
   activo: boolean
   creado_en: string

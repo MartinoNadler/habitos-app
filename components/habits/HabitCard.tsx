@@ -135,7 +135,23 @@ export default function HabitCard({
               <span className="font-semibold text-sm text-white leading-tight">
                 {habit.nombre}
               </span>
-              {streakActual >= 2 && (
+              {habit.frecuencia === 'veces_semana' ? (
+                // Badge: X/N esta semana
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: streakActual >= (habit.meta_semanal ?? 3)
+                      ? 'rgba(92,255,123,.12)' : 'rgba(255,255,255,.06)',
+                    color: streakActual >= (habit.meta_semanal ?? 3)
+                      ? '#5CFF7B' : 'rgba(255,255,255,.4)',
+                    border: `1px solid ${streakActual >= (habit.meta_semanal ?? 3)
+                      ? 'rgba(92,255,123,.25)' : 'rgba(255,255,255,.1)'}`,
+                  }}
+                >
+                  {streakActual}/{habit.meta_semanal ?? 3} sem
+                </span>
+              ) : streakActual >= 2 ? (
+                // Badge: racha de días
                 <span
                   className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
                   style={{
@@ -146,7 +162,7 @@ export default function HabitCard({
                 >
                   🔥 {streakActual}d
                 </span>
-              )}
+              ) : null}
               {completado && habit.record && (
                 <span
                   className="text-[10px] font-mono font-bold flex-shrink-0"
@@ -170,9 +186,11 @@ export default function HabitCard({
             {/* Mini barras semanales */}
             <div className="flex items-end gap-1 mt-2.5">
               {weekDates.map((date) => {
-                const done = weekSet.has(date) || (date === today && completado)
+                const dow = new Date(date + 'T00:00:00').getDay()
+                const programado = habit.frecuencia !== 'dias_semana' || (habit.dias_semana ?? []).includes(dow)
+                const done = programado && (weekSet.has(date) || (date === today && completado))
                 const isToday = date === today
-                const dayLabel = DIAS_LABEL[new Date(date + 'T00:00:00').getDay()]
+                const dayLabel = DIAS_LABEL[dow]
                 return (
                   <div key={date} className="flex flex-col items-center gap-0.5">
                     <div
@@ -180,12 +198,14 @@ export default function HabitCard({
                         width: 7,
                         height: 14,
                         borderRadius: 2,
-                        background: done
+                        background: !programado
+                          ? 'rgba(255,255,255,.03)'
+                          : done
                           ? color
                           : isToday
                           ? `${color}20`
                           : 'rgba(255,255,255,.06)',
-                        border: isToday && !done ? `1px solid ${color}35` : 'none',
+                        border: isToday && !done && programado ? `1px solid ${color}35` : 'none',
                         transition: 'background 0.3s',
                         boxShadow: done && isToday ? `0 0 6px ${color}80` : 'none',
                       }}
@@ -194,7 +214,11 @@ export default function HabitCard({
                       style={{
                         fontSize: 8,
                         lineHeight: 1,
-                        color: isToday ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.2)',
+                        color: !programado
+                          ? 'rgba(255,255,255,.1)'
+                          : isToday
+                          ? 'rgba(255,255,255,.55)'
+                          : 'rgba(255,255,255,.2)',
                         fontWeight: isToday ? 700 : 400,
                       }}
                     >

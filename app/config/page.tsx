@@ -13,6 +13,15 @@ import { Toast } from '@/components/ui/Toast'
 import { getNivel } from '@/lib/types'
 import type { Habit, Reward } from '@/lib/types'
 
+const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+function frecuenciaLabel(h: Habit): string {
+  if (h.frecuencia === 'veces_semana') return `${h.meta_semanal ?? '?'}×/sem`
+  if (h.frecuencia === 'dias_semana') {
+    return (h.dias_semana ?? []).sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DIAS_CORTOS[d]).join(' ')
+  }
+  return 'diario'
+}
+
 // ── SVG Icons inline ────────────────────────────────────────────────────────
 function IconPencil() {
   return (
@@ -349,7 +358,7 @@ export default function ConfigPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium truncate">{h.nombre}</p>
                     <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.3)' }}>
-                      {h.categoria} · {h.esfuerzo}
+                      {h.categoria} · {h.esfuerzo} · {frecuenciaLabel(h)}
                       {!h.activo && ' · inactivo'}
                     </p>
                   </div>

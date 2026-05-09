@@ -16,15 +16,64 @@ function formatearFecha(dateStr: string): string {
   return d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-/** Calcula la racha actual de un hábito (días consecutivos hacia atrás desde hoy o ayer) */
+/** ¿Debe mostrarse este hábito hoy? */
+function esHabitoDeHoy(habit: Habit, hoy: string): boolean {
+  if (habit.frecuencia !== 'dias_semana') return true
+  const dow = new Date(hoy + 'T00:00:00').getDay()
+  return (habit.dias_semana ?? []).includes(dow)
+}
+
+/** Lunes de la semana que contiene la fecha dada */
+function getLunes(fecha: string): string {
+  const d = new Date(fecha + 'T00:00:00')
+  const lunes = new Date(d)
+  lunes.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return lunes.toISOString().split('T')[0]
+}
+
+/**
+ * Calcula el valor de "streakActual" según el tipo de frecuencia:
+ * - diario / semanal: días consecutivos completados
+ * - dias_semana: días programados consecutivos completados
+ * - veces_semana: completions de la semana actual (para mostrar X/N)
+ */
 function calcularStreakHabito(
-  habitId: string,
+  habit: Habit,
   records: { habit_id: string; fecha: string }[],
   today: string,
 ): number {
-  const fechas = new Set(records.filter(r => r.habit_id === habitId).map(r => r.fecha))
+  const fechas = new Set(records.filter(r => r.habit_id === habit.id).map(r => r.fecha))
+
+  // Para veces_semana: devolvemos el conteo de esta semana
+  if (habit.frecuencia === 'veces_semana') {
+    const lunesActual = getLunes(today)
+    return records.filter(r => r.habit_id === habit.id && r.fecha >= lunesActual).length
+  }
+
+  // Para dias_semana: racha sobre días programados
+  if (habit.frecuencia === 'dias_semana') {
+    const programados = habit.dias_semana ?? []
+    if (programados.length === 0) return 0
+    let streak = 0
+    const d = new Date(today + 'T00:00:00')
+    // Si hoy está programado pero no completado, empezar desde ayer
+    if (programados.includes(d.getDay()) && !fechas.has(today)) {
+      d.setDate(d.getDate() - 1)
+    }
+    let guard = 0
+    while (guard++ < 90) {
+      const ds = d.toISOString().split('T')[0]
+      const dow = d.getDay()
+      if (!programados.includes(dow)) { d.setDate(d.getDate() - 1); continue }
+      if (!fechas.has(ds)) break
+      streak++
+      d.setDate(d.getDate() - 1)
+    }
+    return streak
+  }
+
+  // Diario (y 'semanal' legacy): días consecutivos
   const start = new Date(today + 'T00:00:00')
-  // Si no completó hoy, empezar desde ayer
   if (!fechas.has(today)) start.setDate(start.getDate() - 1)
   let streak = 0
   const d = new Date(start)
@@ -145,11 +194,14 @@ export default async function HoyPage() {
   const recordMap = new Map(recordsHoy.map(r => [r.habit_id, r]))
   const weekDateSet = new Set(weekDates)
 
-  const habitDatos = habits.map((h, index) => {
+  // Solo hábitos programados para hoy
+  const habitsProgramadosHoy = habits.filter(h => esHabitoDeHoy(h, hoy))
+
+  const habitDatos = habitsProgramadosHoy.map((h, index) => {
     const habit: HabitWithRecord = { ...h, record: recordMap.get(h.id) }
 
-    // Streak actual por hábito
-    const streakActual = calcularStreakHabito(h.id, recordsRecientes, hoy)
+    // Streak/conteo según tipo de frecuencia
+    const streakActual = calcularStreakHabito(h, recordsRecientes, hoy)
 
     // Días de la semana completados
     const weekCompleted = recordsRecientes
@@ -159,8 +211,10 @@ export default async function HoyPage() {
     return { habit, index, streakActual, weekCompleted }
   })
 
-  const completadosHoy = recordsHoy.length
-  const totalHabitos = habits.length
+  // Completados hoy = registros que corresponden a hábitos programados para hoy
+  const habitIdsProgramados = new Set(habitsProgramadosHoy.map(h => h.id))
+  const completadosHoy = recordsHoy.filter(r => habitIdsProgramados.has(r.habit_id)).length
+  const totalHabitos = habitsProgramadosHoy.length
   const displayName: string | undefined = user.user_metadata?.display_name || undefined
 
   return (

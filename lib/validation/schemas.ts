@@ -5,8 +5,9 @@ export const HabitSchema = z.object({
   emoji: z.string().min(1).max(8),
   categoria: z.enum(['salud', 'estudio', 'sueño', 'otro']),
   esfuerzo: z.enum(['facil', 'moderado', 'dificil']),
-  frecuencia: z.enum(['diario', 'semanal']),
-  meta_semanal: z.number().int().min(1).max(7).optional(),
+  frecuencia: z.enum(['diario', 'veces_semana', 'dias_semana']),
+  meta_semanal: z.number().int().min(1).max(6).nullable().optional(),
+  dias_semana: z.array(z.number().int().min(0).max(6)).min(1).max(7).nullable().optional(),
   campo_extra: z.enum(['minutos', 'horas', 'vasos', 'paginas', 'nota', 'ninguno']),
 })
 
