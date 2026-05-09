@@ -151,10 +151,6 @@ export async function undoCheckAction(formData: FormData) {
   // Eliminar record y descontar puntos
   await supabase.from('records').delete().eq('id', record.id)
 
-  await supabase.rpc('decrement_puntos', { uid: user.id, amount: record.pts }).catch(() => {
-    // Fallback manual si no existe la RPC
-  })
-
   // Actualizar puntos manualmente
   const { data: state } = await supabase
     .from('user_state')
