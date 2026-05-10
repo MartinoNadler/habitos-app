@@ -100,17 +100,34 @@ export default async function ProgresoPage() {
 
   const diasConRegistros = new Set(records.map(r => r.fecha)).size
 
-  /** Días/ocurrencias esperadas según la frecuencia del hábito */
-  function diasEsperados(h: (typeof habits)[number], diasDesdeCreacionH: number): number {
+  const hoyStr = hoy.toISOString().split('T')[0]
+  const hace30 = new Date(hoy); hace30.setDate(hoy.getDate() - 29)
+  const hace30Str = hace30.toISOString().split('T')[0]
+
+  /**
+   * Cuenta las ocurrencias esperadas de un hábito en el rango [desde, hasta].
+   * Para 'diario': días del rango.
+   * Para 'veces_semana': semanas del rango × meta.
+   * Para 'dias_semana': días programados que caen en el rango.
+   */
+  function ocurrenciasEsperadas(h: (typeof habits)[number], desde: string, hasta: string): number {
+    const d1 = new Date(desde + 'T00:00:00')
+    const d2 = new Date(hasta + 'T00:00:00')
+    const totalDias = Math.round((d2.getTime() - d1.getTime()) / 86_400_000) + 1
+
     if (h.frecuencia === 'veces_semana') {
-      const semanas = Math.max(Math.ceil(diasDesdeCreacionH / 7), 1)
-      return semanas * (h.meta_semanal ?? 1)
+      const semanas = totalDias / 7
+      return Math.max(Math.round(semanas * (h.meta_semanal ?? 1)), 1)
     }
     if (h.frecuencia === 'dias_semana') {
-      const n = (h.dias_semana ?? []).length
-      return Math.max(Math.round((diasDesdeCreacionH / 7) * n), 1)
+      const programados = h.dias_semana ?? []
+      if (programados.length === 0) return 1
+      let count = 0
+      const d = new Date(d1)
+      while (d <= d2) { if (programados.includes(d.getDay())) count++; d.setDate(d.getDate() + 1) }
+      return Math.max(count, 1)
     }
-    return diasDesdeCreacionH // diario / semanal legacy
+    return Math.max(totalDias, 1) // diario / semanal legacy
   }
 
   const habitStats = habits.map(h => {
@@ -121,10 +138,14 @@ export default async function ProgresoPage() {
       ? conValor.reduce((acc, r) => acc + (r.valor ?? 0), 0) / conValor.length
       : null
     const mejorRacha = calcularRachaPorHabito(records, h.id)
-    const diasDesdeCreacionH = Math.max(
-      Math.round((Date.now() - new Date(h.creado_en).getTime()) / (1000 * 60 * 60 * 24)), 1
-    )
-    const pctCumplimiento = Math.min(Math.round((completados / diasEsperados(h, diasDesdeCreacionH)) * 100), 100)
+
+    // Ventana: últimos 30 días, pero no antes de la fecha de creación
+    const creacionStr = h.creado_en.split('T')[0]
+    const desde = creacionStr > hace30Str ? creacionStr : hace30Str
+    const completadosVentana = hRec.filter(r => r.fecha >= desde && r.fecha <= hoyStr).length
+    const esperados = ocurrenciasEsperadas(h, desde, hoyStr)
+    const pctCumplimiento = Math.min(Math.round((completadosVentana / esperados) * 100), 100)
+
     const diasEsteMes = recordsMes.filter(r => r.habit_id === h.id).length
     return { habit: h, completados, promedio, mejorRacha, pctCumplimiento, diasEsteMes }
   })
