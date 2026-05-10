@@ -157,8 +157,10 @@ export default function StatsContent({
                 <span className="font-bold text-sm" style={{ color: '#FFC857' }}>{state.puntos}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span style={{ fontSize: 12 }}>✅</span>
-                <span className="font-bold text-sm text-white">{habitStats.length}</span>
+                <span style={{ fontSize: 12 }}>📋</span>
+                <span className="font-bold text-sm text-white">{habitStats.length}
+                  <span className="font-normal text-[10px] ml-0.5" style={{ color: 'rgba(255,255,255,.35)' }}>hab.</span>
+                </span>
               </div>
             </div>
           </div>
