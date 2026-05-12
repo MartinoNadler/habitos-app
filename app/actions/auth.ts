@@ -5,19 +5,6 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { LoginSchema, RegisterSchema } from '@/lib/validation/schemas'
 
-const HABITOS_INICIALES = [
-  { nombre: 'Ejercicio', emoji: '🏃', categoria: 'salud',   esfuerzo: 'dificil',  frecuencia: 'diario', campo_extra: 'ninguno', meta_semanal: 1 },
-  { nombre: 'Estudio',   emoji: '📚', categoria: 'estudio', esfuerzo: 'moderado', frecuencia: 'diario', campo_extra: 'minutos', meta_semanal: 1 },
-  { nombre: 'Sueño',     emoji: '😴', categoria: 'sueño',   esfuerzo: 'facil',    frecuencia: 'diario', campo_extra: 'horas',   meta_semanal: 1 },
-  { nombre: 'Agua',      emoji: '💧', categoria: 'salud',   esfuerzo: 'facil',    frecuencia: 'diario', campo_extra: 'vasos',   meta_semanal: 1 },
-] as const
-
-const RECOMPENSAS_INICIALES = [
-  { nombre: 'Serie extra',      emoji: '🎬', costo: 20,  descripcion: 'Ver un capítulo extra' },
-  { nombre: 'Comida favorita',  emoji: '🍕', costo: 35,  descripcion: 'Pedir o cocinar tu comida favorita' },
-  { nombre: 'Compra personal',  emoji: '🛍️', costo: 100, descripcion: 'Algo que quieras comprarte' },
-  { nombre: 'Día libre',        emoji: '🏖️', costo: 200, descripcion: 'Un día sin obligaciones' },
-] as const
 
 export async function loginAction(formData: FormData) {
   const raw = { email: formData.get('email'), password: formData.get('password') }
@@ -25,8 +12,19 @@ export async function loginAction(formData: FormData) {
   if (!parsed.success) return { error: parsed.error.errors[0].message }
 
   const supabase = await createClient()
-  const { error } = await supabase.auth.signInWithPassword(parsed.data)
+  const { data, error } = await supabase.auth.signInWithPassword(parsed.data)
   if (error) return { error: 'Credenciales incorrectas' }
+
+  // Si el usuario no tiene hábitos aún, mandarlo al onboarding
+  const userId = data.user?.id
+  if (userId) {
+    const { count } = await supabase
+      .from('habits')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('activo', true)
+    if (!count || count === 0) redirect('/onboarding')
+  }
 
   redirect('/hoy')
 }
@@ -59,15 +57,7 @@ export async function registerAction(formData: FormData) {
 
   await admin.from('user_state').upsert({ user_id: userId })
 
-  await admin.from('habits').insert(
-    HABITOS_INICIALES.map(h => ({ ...h, user_id: userId }))
-  )
-
-  await admin.from('rewards').insert(
-    RECOMPENSAS_INICIALES.map(r => ({ ...r, user_id: userId }))
-  )
-
-  redirect('/hoy')
+  redirect('/onboarding')
 }
 
 export async function logoutAction() {

@@ -26,14 +26,16 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isPublic = pathname === '/login' || pathname === '/register'
+  const isAuthPage  = pathname === '/login' || pathname === '/register'
+  // /onboarding se permite sin sesión — la página misma redirige a /login si no hay usuario
+  const isPublic    = isAuthPage || pathname === '/onboarding'
 
   if (!user && !isPublic) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  if (user && isPublic) {
-    // Redirect fijo a /hoy — sin usar parámetros del query string para evitar open redirect
+  if (user && isAuthPage) {
+    // Usuario ya autenticado intentando ir a login/register → mandarlo a /hoy
     return NextResponse.redirect(new URL('/hoy', request.url))
   }
 
