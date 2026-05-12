@@ -12,8 +12,7 @@ const HABIT_PALETTE = [
   '#5CFF7B', '#FFC857', '#FF6B9D', '#00E5CC',
 ]
 
-// Sunday=0
-const DIAS_ORDEN_SEMANA = [1, 2, 3, 4, 5, 6, 0] // Lun→Dom
+const DIAS_ORDEN_SEMANA = [1, 2, 3, 4, 5, 6, 0]
 const DIAS_FULL = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
 interface HabitStats {
@@ -21,6 +20,7 @@ interface HabitStats {
   completados: number
   promedio: number | null
   mejorRacha: number
+  rachaActual: number
   pctCumplimiento: number
   diasEsteMes: number
 }
@@ -59,6 +59,19 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   )
 }
 
+function frecuenciaLabel(h: Habit): string {
+  if (h.frecuencia === 'veces_semana') return `${h.meta_semanal ?? '?'}×/sem`
+  if (h.frecuencia === 'dias_semana') {
+    const DIAS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+    return (h.dias_semana ?? []).sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DIAS[d]).join(' ')
+  }
+  return 'diario'
+}
+
+function plural(n: number, singular: string, pluralStr: string) {
+  return `${n} ${n === 1 ? singular : pluralStr}`
+}
+
 export default function StatsContent({
   state, habitStats, diasConRegistros, badges,
   heatmapData, pctPromedioGeneral, mejoraMensual,
@@ -78,19 +91,19 @@ export default function StatsContent({
 
   const mejoraPositiva = mejoraMensual >= 0
   const tengoHabits = habitStats.length > 0
-  const maxDowCount = Math.max(...actividadPorDia.map(d => d.count), 1)
 
-  // Puntos promedio semanal
   const promPtsSemanal = puntosSemanales.length > 0
     ? Math.round(puntosSemanales.reduce((s, w) => s + w.value, 0) / puntosSemanales.length)
     : 0
 
-  // Puntos esta semana vs semana anterior
-  const ptsSemanaActual = puntosSemanales[puntosSemanales.length - 1]?.value ?? 0
+  const ptsSemanaActual  = puntosSemanales[puntosSemanales.length - 1]?.value ?? 0
   const ptsSemanaAnterior = puntosSemanales[puntosSemanales.length - 2]?.value ?? 0
   const deltaSemana = ptsSemanaAnterior > 0
     ? Math.round(((ptsSemanaActual - ptsSemanaAnterior) / ptsSemanaAnterior) * 100)
     : 0
+
+  // Hábitos que necesitan atención (racha = 0 y tienen historial)
+  const necesitanAtencion = habitStats.filter(s => s.rachaActual === 0 && s.completados > 0)
 
   return (
     <div className="min-h-screen pb-24" style={{ background: 'radial-gradient(ellipse at top, #0f1020, #090B14)' }}>
@@ -110,47 +123,32 @@ export default function StatsContent({
           }}
         >
           <div className="flex items-center gap-4">
-            {/* Izquierda: pct + label + insight */}
             <div className="flex-1 min-w-0">
-              <p
-                className="font-black leading-none"
-                style={{ fontSize: 56, color: '#fff', letterSpacing: '-2px' }}
-              >
+              <p className="font-black leading-none" style={{ fontSize: 56, color: '#fff', letterSpacing: '-2px' }}>
                 {pctPromedioGeneral}
                 <span style={{ fontSize: 28, color: 'rgba(255,255,255,.4)', letterSpacing: '-1px' }}>%</span>
               </p>
-              <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,.4)' }}>
-                cumplimiento promedio
+              <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,.35)' }}>
+                cumplimiento · últimos 30 días
               </p>
               {(completadosMesPasado > 0 || completadosEsteMes > 0) && (
                 <div className="flex items-center gap-1.5 mt-2">
-                  <span style={{
-                    fontSize: 11,
-                    fontWeight: 700,
-                    color: mejoraPositiva ? '#5CFF7B' : '#FF6B9D',
-                  }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: mejoraPositiva ? '#5CFF7B' : '#FF6B9D' }}>
                     {mejoraPositiva ? '↑' : '↓'} {Math.abs(mejoraMensual)}%
                   </span>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.25)' }}>
-                    vs mes pasado
-                  </span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.25)' }}>vs mes pasado</span>
                 </div>
               )}
             </div>
 
-            {/* Centro: ring */}
-            <ProgressRing
-              value={pctPromedioGeneral}
-              size={76}
-              stroke={6}
-              color="#7c6fff"
-            />
+            <ProgressRing value={pctPromedioGeneral} size={76} stroke={6} color="#7c6fff" />
 
-            {/* Derecha: mini stats */}
             <div className="space-y-2.5 flex-shrink-0">
               <div className="flex items-center gap-1.5">
                 <span style={{ fontSize: 14 }}>🔥</span>
-                <span className="font-bold text-sm text-white">{state.streak}d</span>
+                <span className="font-bold text-sm text-white">{state.streak}
+                  <span className="font-normal text-[10px] ml-0.5" style={{ color: 'rgba(255,255,255,.35)' }}>d</span>
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <ZapIcon size={12} color="#FFC857" />
@@ -165,14 +163,11 @@ export default function StatsContent({
             </div>
           </div>
 
-          {/* Días registrados */}
           <div
             className="flex items-center justify-between mt-4 pt-4"
             style={{ borderTop: '1px solid rgba(255,255,255,.05)' }}
           >
-            <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)' }}>
-              Días con actividad
-            </span>
+            <span style={{ fontSize: 12, color: 'rgba(255,255,255,.3)' }}>Días con actividad</span>
             <span className="font-mono font-bold text-sm text-white">{diasConRegistros}</span>
           </div>
         </div>
@@ -187,153 +182,155 @@ export default function StatsContent({
               transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 80ms',
             }}
           >
-            {/* Mejor día */}
-            <div
-              className="rounded-2xl p-3 flex flex-col gap-1"
-              style={{
-                background: 'rgba(255,255,255,.03)',
-                border: '1px solid rgba(255,255,255,.06)',
-              }}
-            >
+            <div className="rounded-2xl p-3 flex flex-col gap-1"
+              style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
               <span style={{ fontSize: 16 }}>📅</span>
               <p className="font-bold text-white text-sm leading-tight">{mejorDia.nombre}</p>
               <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>día más activo</p>
             </div>
-
-            {/* Mejor hábito */}
-            <div
-              className="rounded-2xl p-3 flex flex-col gap-1"
-              style={{
-                background: 'rgba(255,255,255,.03)',
-                border: '1px solid rgba(255,255,255,.06)',
-              }}
-            >
+            <div className="rounded-2xl p-3 flex flex-col gap-1"
+              style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
               <span style={{ fontSize: 16 }}>🏆</span>
-              <p className="font-bold text-white text-sm leading-tight truncate">
-                {mejorHabitoNombre ?? '—'}
-              </p>
+              <p className="font-bold text-white text-sm leading-tight truncate">{mejorHabitoNombre ?? '—'}</p>
               <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>{mejorHabitoPct}% cumpl.</p>
             </div>
-
-            {/* Este mes */}
-            <div
-              className="rounded-2xl p-3 flex flex-col gap-1"
-              style={{
-                background: 'rgba(255,255,255,.03)',
-                border: '1px solid rgba(255,255,255,.06)',
-              }}
-            >
+            <div className="rounded-2xl p-3 flex flex-col gap-1"
+              style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.06)' }}>
               <span style={{ fontSize: 16 }}>📈</span>
               <p className="font-bold text-white text-sm leading-tight">{completadosEsteMes}</p>
-              <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>hábitos este mes</p>
+              <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>este mes</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── NECESITAN ATENCIÓN ── */}
+        {necesitanAtencion.length > 0 && (
+          <div
+            className="rounded-2xl px-4 py-3 flex items-start gap-3"
+            style={{
+              background: 'rgba(255,107,107,.06)',
+              border: '1px solid rgba(255,107,107,.15)',
+              transform: visible ? 'translateY(0)' : 'translateY(12px)',
+              opacity: visible ? 1 : 0,
+              transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 100ms',
+            }}
+          >
+            <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold" style={{ color: 'rgba(255,150,150,.9)' }}>
+                Racha interrumpida
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,120,120,.5)' }}>
+                {necesitanAtencion.map(s => s.habit.nombre).join(', ')}
+              </p>
             </div>
           </div>
         )}
 
         {/* ── HEATMAP ── */}
-        <section
-          style={{
-            transform: visible ? 'translateY(0)' : 'translateY(12px)',
-            opacity: visible ? 1 : 0,
-            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 120ms',
-          }}
-        >
+        <section style={{
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          opacity: visible ? 1 : 0,
+          transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 120ms',
+        }}>
           <SectionTitle>Actividad — últimos 90 días</SectionTitle>
-          <div
-            className="rounded-2xl p-4"
-            style={{
-              background: 'rgba(255,255,255,.025)',
-              border: '1px solid rgba(255,255,255,.05)',
-            }}
-          >
+          <div className="rounded-2xl p-4"
+            style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.05)' }}>
             <Heatmap data={heatmapData} dias={90} />
           </div>
         </section>
 
         {/* ── POR HÁBITO ── */}
         {tengoHabits && (
-          <section
-            style={{
-              transform: visible ? 'translateY(0)' : 'translateY(12px)',
-              opacity: visible ? 1 : 0,
-              transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 160ms',
-            }}
-          >
-            <SectionTitle>Por hábito</SectionTitle>
+          <section style={{
+            transform: visible ? 'translateY(0)' : 'translateY(12px)',
+            opacity: visible ? 1 : 0,
+            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 160ms',
+          }}>
+            <SectionTitle>Por hábito · 30 días</SectionTitle>
             <div className="space-y-3">
               {habitStats.map((s, i) => {
                 const color = HABIT_PALETTE[i % HABIT_PALETTE.length]
+                const rachaRota = s.rachaActual === 0 && s.completados > 0
+                const esVecesSemana = s.habit.frecuencia === 'veces_semana'
+
                 return (
                   <div
                     key={s.habit.id}
                     className="rounded-2xl p-4"
                     style={{
                       background: 'rgba(16,18,32,.95)',
-                      border: `1px solid rgba(255,255,255,.06)`,
-                      transition: 'transform 0.25s ease',
+                      border: `1px solid ${rachaRota ? 'rgba(255,107,107,.15)' : 'rgba(255,255,255,.06)'}`,
                     }}
-                    onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
-                    onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}
                   >
                     {/* Header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xl">{s.habit.emoji}</span>
-                        <div>
-                          <p className="font-bold text-white text-sm">{s.habit.nombre}</p>
-                          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
-                            {s.completados} días totales
-                            {s.promedio != null && s.habit.campo_extra !== 'ninguno' &&
-                              ` · prom. ${s.promedio.toFixed(1)} ${s.habit.campo_extra}`}
-                          </p>
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-xl flex-shrink-0">{s.habit.emoji}</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-white text-sm leading-tight truncate">{s.habit.nombre}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full"
+                              style={{ background: `${color}15`, color: `${color}cc` }}>
+                              {frecuenciaLabel(s.habit)}
+                            </span>
+                            {s.promedio != null && s.habit.campo_extra !== 'ninguno' && (
+                              <span style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>
+                                prom. {s.promedio.toFixed(1)} {s.habit.campo_extra}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        {s.mejorRacha >= 2 && (
-                          <span
-                            className="text-[10px] font-bold px-2 py-1 rounded-full"
-                            style={{
-                              background: 'rgba(255,122,61,.12)',
-                              color: '#FF7A3D',
-                              border: '1px solid rgba(255,122,61,.2)',
-                            }}
-                          >
-                            🔥 {s.mejorRacha}d
+                      <span className="font-mono font-bold text-base flex-shrink-0" style={{ color }}>
+                        {s.pctCumplimiento}%
+                      </span>
+                    </div>
+
+                    {/* Barra progreso */}
+                    <div className="h-2 rounded-full overflow-hidden mb-3"
+                      style={{ background: 'rgba(255,255,255,.06)' }}>
+                      <div style={{
+                        height: '100%',
+                        width: barsVisible ? `${s.pctCumplimiento}%` : '0%',
+                        borderRadius: 'inherit',
+                        background: `linear-gradient(90deg, ${color}cc, ${color})`,
+                        boxShadow: `0 0 8px ${color}50`,
+                        transition: `width 1.1s cubic-bezier(0.4,0,0.2,1) ${i * 80}ms`,
+                      }} />
+                    </div>
+
+                    {/* Stats row */}
+                    <div className="flex items-center gap-4">
+                      {/* Racha actual */}
+                      <div className="flex items-center gap-1">
+                        <span style={{ fontSize: 11 }}>🔥</span>
+                        {esVecesSemana ? (
+                          <span style={{ fontSize: 11, color: s.rachaActual > 0 ? '#FF7A3D' : 'rgba(255,255,255,.25)' }}>
+                            <span className="font-bold text-white">{s.rachaActual}</span>
+                            <span style={{ color: 'rgba(255,255,255,.3)' }}>/{s.habit.meta_semanal ?? 1} esta sem.</span>
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
+                            Racha: <span className="font-semibold" style={{ color: s.rachaActual > 0 ? '#FF7A3D' : 'rgba(255,255,255,.4)' }}>
+                              {plural(s.rachaActual, 'día', 'días')}
+                            </span>
                           </span>
                         )}
-                        <span
-                          className="font-mono font-bold text-base"
-                          style={{ color }}
-                        >
-                          {s.pctCumplimiento}%
-                        </span>
                       </div>
-                    </div>
 
-                    {/* Barra progreso animada */}
-                    <div
-                      className="h-2 rounded-full overflow-hidden"
-                      style={{ background: 'rgba(255,255,255,.06)' }}
-                    >
-                      <div
-                        style={{
-                          height: '100%',
-                          width: barsVisible ? `${s.pctCumplimiento}%` : '0%',
-                          borderRadius: 'inherit',
-                          background: `linear-gradient(90deg, ${color}cc, ${color})`,
-                          boxShadow: `0 0 8px ${color}50`,
-                          transition: `width 1.1s cubic-bezier(0.4,0,0.2,1) ${i * 80}ms`,
-                        }}
-                      />
-                    </div>
+                      <span style={{ color: 'rgba(255,255,255,.1)' }}>·</span>
 
-                    {/* Mini stats */}
-                    <div className="flex items-center gap-4 mt-2.5">
+                      {/* Mejor racha */}
                       <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
-                        Este mes: <span className="text-white font-semibold">{s.diasEsteMes}d</span>
+                        Mejor: <span className="font-semibold text-white">{plural(s.mejorRacha, 'día', 'días')}</span>
                       </span>
+
+                      <span style={{ color: 'rgba(255,255,255,.1)' }}>·</span>
+
+                      {/* Este mes */}
                       <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
-                        Mejor racha: <span className="text-white font-semibold">{s.mejorRacha}d</span>
+                        Mes: <span className="font-semibold text-white">{s.diasEsteMes}</span>
                       </span>
                     </div>
                   </div>
@@ -344,54 +341,39 @@ export default function StatsContent({
         )}
 
         {/* ── ACTIVIDAD POR DÍA ── */}
-        <section
-          style={{
-            transform: visible ? 'translateY(0)' : 'translateY(12px)',
-            opacity: visible ? 1 : 0,
-            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 200ms',
-          }}
-        >
+        <section style={{
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          opacity: visible ? 1 : 0,
+          transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 200ms',
+        }}>
           <SectionTitle>Actividad por día</SectionTitle>
-          <div
-            className="rounded-2xl p-4 space-y-2"
-            style={{
-              background: 'rgba(255,255,255,.025)',
-              border: '1px solid rgba(255,255,255,.05)',
-            }}
-          >
+          <div className="rounded-2xl p-4 space-y-2"
+            style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.05)' }}>
             {DIAS_ORDEN_SEMANA.map(dowIdx => {
               const d = actividadPorDia[dowIdx]
               const isBest = d.dia === mejorDia.nombre
               const barColor = isBest ? '#5CFF7B' : '#7c6fff'
               return (
                 <div key={d.dia} className="flex items-center gap-3">
-                  <span
-                    className="text-xs font-medium w-8 flex-shrink-0 text-right"
-                    style={{ color: isBest ? '#5CFF7B' : 'rgba(255,255,255,.35)' }}
-                  >
+                  <span className="text-xs font-medium w-8 flex-shrink-0 text-right"
+                    style={{ color: isBest ? '#5CFF7B' : 'rgba(255,255,255,.35)' }}>
                     {d.dia}
                   </span>
-                  <div
-                    className="flex-1 h-2 rounded-full overflow-hidden"
-                    style={{ background: 'rgba(255,255,255,.06)' }}
-                  >
-                    <div
-                      style={{
-                        height: '100%',
-                        width: barsVisible ? `${d.pct}%` : '0%',
-                        borderRadius: 'inherit',
-                        background: isBest
-                          ? 'linear-gradient(90deg, #5CFF7B99, #5CFF7B)'
-                          : `linear-gradient(90deg, ${barColor}66, ${barColor}99)`,
-                        boxShadow: isBest ? '0 0 6px rgba(92,255,123,.4)' : 'none',
-                        transition: `width 0.9s cubic-bezier(0.4,0,0.2,1) ${DIAS_ORDEN_SEMANA.indexOf(dowIdx) * 60}ms`,
-                      }}
-                    />
+                  <div className="flex-1 h-2 rounded-full overflow-hidden"
+                    style={{ background: 'rgba(255,255,255,.06)' }}>
+                    <div style={{
+                      height: '100%',
+                      width: barsVisible ? `${d.pct}%` : '0%',
+                      borderRadius: 'inherit',
+                      background: isBest
+                        ? 'linear-gradient(90deg, #5CFF7B99, #5CFF7B)'
+                        : `linear-gradient(90deg, ${barColor}66, ${barColor}99)`,
+                      boxShadow: isBest ? '0 0 6px rgba(92,255,123,.4)' : 'none',
+                      transition: `width 0.9s cubic-bezier(0.4,0,0.2,1) ${DIAS_ORDEN_SEMANA.indexOf(dowIdx) * 60}ms`,
+                    }} />
                   </div>
-                  <span
-                    className="text-xs font-mono w-6 flex-shrink-0"
-                    style={{ color: isBest ? '#5CFF7B' : 'rgba(255,255,255,.2)' }}
-                  >
+                  <span className="text-xs font-mono w-6 flex-shrink-0"
+                    style={{ color: isBest ? '#5CFF7B' : 'rgba(255,255,255,.2)' }}>
                     {d.count}
                   </span>
                 </div>
@@ -401,60 +383,52 @@ export default function StatsContent({
         </section>
 
         {/* ── EVOLUCIÓN DE PUNTOS ── */}
-        {puntosSemanales.length >= 2 && (
-          <section
-            style={{
-              transform: visible ? 'translateY(0)' : 'translateY(12px)',
-              opacity: visible ? 1 : 0,
-              transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 240ms',
-            }}
-          >
-            <SectionTitle>Evolución de puntos</SectionTitle>
-            <div
-              className="rounded-2xl p-4"
-              style={{
-                background: 'rgba(255,255,255,.025)',
-                border: '1px solid rgba(255,255,255,.05)',
-              }}
-            >
-              {/* Header con stats */}
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <ZapIcon size={14} color="#FFC857" />
-                    <span className="font-mono font-black text-xl text-white">{state.puntos}</span>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>pts totales</span>
-                  </div>
-                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', marginTop: 2 }}>
-                    Promedio semanal: <span className="text-white font-semibold">{promPtsSemanal} pts</span>
-                  </p>
+        <section style={{
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          opacity: visible ? 1 : 0,
+          transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 240ms',
+        }}>
+          <SectionTitle>Evolución de puntos</SectionTitle>
+          <div className="rounded-2xl p-4"
+            style={{ background: 'rgba(255,255,255,.025)', border: '1px solid rgba(255,255,255,.05)' }}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <ZapIcon size={14} color="#FFC857" />
+                  <span className="font-mono font-black text-xl text-white">{state.puntos}</span>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>pts totales</span>
                 </div>
-                {deltaSemana !== 0 && (
-                  <span
-                    className="text-xs font-bold px-2.5 py-1 rounded-full"
-                    style={{
-                      background: deltaSemana > 0 ? 'rgba(92,255,123,.1)' : 'rgba(255,107,157,.1)',
-                      color: deltaSemana > 0 ? '#5CFF7B' : '#FF6B9D',
-                      border: `1px solid ${deltaSemana > 0 ? 'rgba(92,255,123,.2)' : 'rgba(255,107,157,.2)'}`,
-                    }}
-                  >
-                    {deltaSemana > 0 ? '↑' : '↓'} {Math.abs(deltaSemana)}% esta semana
-                  </span>
-                )}
+                <p style={{ fontSize: 11, color: 'rgba(255,255,255,.28)', marginTop: 2 }}>
+                  Promedio semanal: <span className="text-white font-semibold">{promPtsSemanal} pts</span>
+                </p>
               </div>
-              <TrendChart data={puntosSemanales} color="#7c6fff" height={100} />
+              {deltaSemana !== 0 && (
+                <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{
+                  background: deltaSemana > 0 ? 'rgba(92,255,123,.1)' : 'rgba(255,107,157,.1)',
+                  color: deltaSemana > 0 ? '#5CFF7B' : '#FF6B9D',
+                  border: `1px solid ${deltaSemana > 0 ? 'rgba(92,255,123,.2)' : 'rgba(255,107,157,.2)'}`,
+                }}>
+                  {deltaSemana > 0 ? '↑' : '↓'} {Math.abs(deltaSemana)}% esta semana
+                </span>
+              )}
             </div>
-          </section>
-        )}
+            {puntosSemanales.length >= 2 ? (
+              <TrendChart data={puntosSemanales} color="#7c6fff" height={100} />
+            ) : (
+              <div className="flex items-center justify-center py-8"
+                style={{ color: 'rgba(255,255,255,.2)', fontSize: 13 }}>
+                Completá hábitos esta semana para ver la evolución
+              </div>
+            )}
+          </div>
+        </section>
 
         {/* ── INSIGNIAS ── */}
-        <section
-          style={{
-            transform: visible ? 'translateY(0)' : 'translateY(12px)',
-            opacity: visible ? 1 : 0,
-            transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 280ms',
-          }}
-        >
+        <section style={{
+          transform: visible ? 'translateY(0)' : 'translateY(12px)',
+          opacity: visible ? 1 : 0,
+          transition: 'all 0.45s cubic-bezier(0.4,0,0.2,1) 280ms',
+        }}>
           <SectionTitle>Insignias</SectionTitle>
           <div className="grid grid-cols-3 gap-2.5">
             {BADGES.map((badge, i) => {

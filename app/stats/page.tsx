@@ -7,24 +7,60 @@ import type { Habit, Record as HabitRecord, UserState, UserBadge } from '@/lib/t
 
 const NOMBRES_DIA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
-function calcularRachaPorHabito(records: HabitRecord[], habitId: string): number {
-  const fechas = records
-    .filter(r => r.habit_id === habitId)
-    .map(r => r.fecha)
-    .sort()
-
+function calcularMejorRacha(records: HabitRecord[], habitId: string): number {
+  const fechas = records.filter(r => r.habit_id === habitId).map(r => r.fecha).sort()
   if (fechas.length === 0) return 0
-
   let maxStreak = 1, curr = 1
   for (let i = 1; i < fechas.length; i++) {
-    const diff = Math.round(
-      (new Date(fechas[i] + 'T00:00:00').getTime() - new Date(fechas[i - 1] + 'T00:00:00').getTime())
-      / (1000 * 60 * 60 * 24)
-    )
-    if (diff === 1) { curr++; maxStreak = Math.max(maxStreak, curr) }
-    else { curr = 1 }
+    const diff = Math.round((new Date(fechas[i] + 'T00:00:00').getTime() - new Date(fechas[i - 1] + 'T00:00:00').getTime()) / 86_400_000)
+    if (diff === 1) { curr++; maxStreak = Math.max(maxStreak, curr) } else { curr = 1 }
   }
   return maxStreak
+}
+
+function calcularRachaActual(habit: Habit, records: HabitRecord[], hoyStr: string): number {
+  const fechas = new Set(records.filter(r => r.habit_id === habit.id).map(r => r.fecha))
+  if (habit.frecuencia === 'veces_semana') {
+    const d = new Date(hoyStr + 'T00:00:00')
+    const lunes = new Date(d); lunes.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+    return records.filter(r => r.habit_id === habit.id && r.fecha >= lunes.toISOString().split('T')[0]).length
+  }
+  if (habit.frecuencia === 'dias_semana') {
+    const programados = habit.dias_semana ?? []
+    if (!programados.length) return 0
+    let streak = 0; const d = new Date(hoyStr + 'T00:00:00')
+    if (programados.includes(d.getDay()) && !fechas.has(hoyStr)) d.setDate(d.getDate() - 1)
+    let g = 0
+    while (g++ < 90) {
+      const ds = d.toISOString().split('T')[0]
+      if (!programados.includes(d.getDay())) { d.setDate(d.getDate() - 1); continue }
+      if (!fechas.has(ds)) break
+      streak++; d.setDate(d.getDate() - 1)
+    }
+    return streak
+  }
+  const start = new Date(hoyStr + 'T00:00:00')
+  if (!fechas.has(hoyStr)) start.setDate(start.getDate() - 1)
+  let streak = 0; const d = new Date(start)
+  while (streak < 365) {
+    const ds = d.toISOString().split('T')[0]
+    if (!fechas.has(ds)) break
+    streak++; d.setDate(d.getDate() - 1)
+  }
+  return streak
+}
+
+function ocurrenciasEsperadas(h: Habit, desde: string, hasta: string): number {
+  const d1 = new Date(desde + 'T00:00:00'), d2 = new Date(hasta + 'T00:00:00')
+  const totalDias = Math.round((d2.getTime() - d1.getTime()) / 86_400_000) + 1
+  if (h.frecuencia === 'veces_semana') return Math.max(Math.round((totalDias / 7) * (h.meta_semanal ?? 1)), 1)
+  if (h.frecuencia === 'dias_semana') {
+    const p = h.dias_semana ?? []; if (!p.length) return 1
+    let count = 0; const d = new Date(d1)
+    while (d <= d2) { if (p.includes(d.getDay())) count++; d.setDate(d.getDate() + 1) }
+    return Math.max(count, 1)
+  }
+  return Math.max(totalDias, 1)
 }
 
 export default async function StatsPage() {
@@ -108,12 +144,9 @@ export default async function StatsPage() {
 
   // ─── Habit stats ──────────────────────────────────────────────────────────
   const diasConRegistros = new Set(records.map(r => r.fecha)).size
-  const diasDesdeCreacion = Math.max(
-    ...habits.map(h => Math.max(
-      Math.round((Date.now() - new Date(h.creado_en).getTime()) / (1000 * 60 * 60 * 24)), 1
-    )),
-    1
-  )
+  const hoyStr = hoy.toISOString().split('T')[0]
+  const hace30 = new Date(hoy); hace30.setDate(hoy.getDate() - 29)
+  const hace30Str = hace30.toISOString().split('T')[0]
 
   const habitStats = habits.map(h => {
     const hRec = records.filter(r => r.habit_id === h.id)
@@ -122,11 +155,15 @@ export default async function StatsPage() {
     const promedio = conValor.length > 0
       ? conValor.reduce((acc, r) => acc + (r.valor ?? 0), 0) / conValor.length
       : null
-    const mejorRacha = calcularRachaPorHabito(records, h.id)
-    const pctCumplimiento = Math.min(Math.round((completados / diasDesdeCreacion) * 100), 100)
+    const mejorRacha = calcularMejorRacha(records, h.id)
+    const rachaActual = calcularRachaActual(h, records, hoyStr)
+    const creacionStr = h.creado_en.split('T')[0]
+    const desde = creacionStr > hace30Str ? creacionStr : hace30Str
+    const completadosVentana = hRec.filter(r => r.fecha >= desde && r.fecha <= hoyStr).length
+    const pctCumplimiento = Math.min(Math.round((completadosVentana / ocurrenciasEsperadas(h, desde, hoyStr)) * 100), 100)
     const diasEsteMes = recordsMes.filter(r => r.habit_id === h.id).length
 
-    return { habit: h, completados, promedio, mejorRacha, pctCumplimiento, diasEsteMes }
+    return { habit: h, completados, promedio, mejorRacha, rachaActual, pctCumplimiento, diasEsteMes }
   })
 
   const pctPromedioGeneral = habitStats.length > 0

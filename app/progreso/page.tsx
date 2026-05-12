@@ -7,14 +7,12 @@ import type { Habit, Record as HabitRecord, UserState, UserBadge } from '@/lib/t
 
 const NOMBRES_DIA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
-function calcularRachaPorHabito(records: HabitRecord[], habitId: string): number {
+function calcularMejorRacha(records: HabitRecord[], habitId: string): number {
   const fechas = records
     .filter(r => r.habit_id === habitId)
     .map(r => r.fecha)
     .sort()
-
   if (fechas.length === 0) return 0
-
   let maxStreak = 1, curr = 1
   for (let i = 1; i < fechas.length; i++) {
     const diff = Math.round(
@@ -25,6 +23,49 @@ function calcularRachaPorHabito(records: HabitRecord[], habitId: string): number
     else { curr = 1 }
   }
   return maxStreak
+}
+
+function calcularRachaActual(habit: Habit, records: HabitRecord[], hoyStr: string): number {
+  const fechas = new Set(records.filter(r => r.habit_id === habit.id).map(r => r.fecha))
+
+  if (habit.frecuencia === 'veces_semana') {
+    // Devuelve el conteo de esta semana
+    const d = new Date(hoyStr + 'T00:00:00')
+    const lunes = new Date(d)
+    lunes.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+    const lunesStr = lunes.toISOString().split('T')[0]
+    return records.filter(r => r.habit_id === habit.id && r.fecha >= lunesStr).length
+  }
+
+  if (habit.frecuencia === 'dias_semana') {
+    const programados = habit.dias_semana ?? []
+    if (programados.length === 0) return 0
+    let streak = 0
+    const d = new Date(hoyStr + 'T00:00:00')
+    if (programados.includes(d.getDay()) && !fechas.has(hoyStr)) d.setDate(d.getDate() - 1)
+    let guard = 0
+    while (guard++ < 90) {
+      const ds = d.toISOString().split('T')[0]
+      if (!programados.includes(d.getDay())) { d.setDate(d.getDate() - 1); continue }
+      if (!fechas.has(ds)) break
+      streak++
+      d.setDate(d.getDate() - 1)
+    }
+    return streak
+  }
+
+  // Diario
+  const start = new Date(hoyStr + 'T00:00:00')
+  if (!fechas.has(hoyStr)) start.setDate(start.getDate() - 1)
+  let streak = 0
+  const d = new Date(start)
+  while (streak < 365) {
+    const ds = d.toISOString().split('T')[0]
+    if (!fechas.has(ds)) break
+    streak++
+    d.setDate(d.getDate() - 1)
+  }
+  return streak
 }
 
 export default async function ProgresoPage() {
@@ -137,7 +178,8 @@ export default async function ProgresoPage() {
     const promedio = conValor.length > 0
       ? conValor.reduce((acc, r) => acc + (r.valor ?? 0), 0) / conValor.length
       : null
-    const mejorRacha = calcularRachaPorHabito(records, h.id)
+    const mejorRacha = calcularMejorRacha(records, h.id)
+    const rachaActual = calcularRachaActual(h, records, hoyStr)
 
     // Ventana: últimos 30 días, pero no antes de la fecha de creación
     const creacionStr = h.creado_en.split('T')[0]
@@ -147,7 +189,7 @@ export default async function ProgresoPage() {
     const pctCumplimiento = Math.min(Math.round((completadosVentana / esperados) * 100), 100)
 
     const diasEsteMes = recordsMes.filter(r => r.habit_id === h.id).length
-    return { habit: h, completados, promedio, mejorRacha, pctCumplimiento, diasEsteMes }
+    return { habit: h, completados, promedio, mejorRacha, rachaActual, pctCumplimiento, diasEsteMes }
   })
 
   const pctPromedioGeneral = habitStats.length > 0
