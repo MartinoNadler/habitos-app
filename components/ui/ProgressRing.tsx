@@ -60,9 +60,14 @@ export default function ProgressRing({
       </svg>
       {/* Número centrado */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="font-mono font-bold text-white leading-none" style={{ fontSize: size * 0.22 }}>
-          {Math.round(value)}%
-        </span>
+        <div className="flex items-end leading-none" style={{ gap: 1 }}>
+          <span className="font-black text-white" style={{ fontSize: size * 0.25, letterSpacing: '-1px', lineHeight: 1 }}>
+            {Math.round(value)}
+          </span>
+          <span className="font-bold" style={{ fontSize: size * 0.13, color: 'rgba(255,255,255,.4)', lineHeight: 1, marginBottom: size * 0.025 }}>
+            %
+          </span>
+        </div>
         {label && (
           <span className="text-text-muted leading-none mt-0.5" style={{ fontSize: size * 0.12 }}>
             {label}
