@@ -251,12 +251,16 @@ export default function HabitCard({
         <CheckModal
           habit={habit}
           onClose={() => { setShowModal(false); procesando.current = false }}
-          onSuccess={(pts) => {
+          onSuccess={() => {
+            // Cierre inmediato — el servidor sigue en background
             setShowModal(false)
             setLocalCompletado(true)
-            setPtsAnim(pts)
             procesando.current = false
           }}
+          onError={() => {
+            setLocalCompletado(false) // revertir si el servidor falló
+          }}
+          onPts={(pts) => setPtsAnim(pts)}
         />
       )}
     </>

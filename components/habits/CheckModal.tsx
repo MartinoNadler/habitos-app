@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { checkHabitAction } from '@/app/actions/habits'
 import type { Habit } from '@/lib/types'
 
@@ -23,13 +23,14 @@ const CAMPO_PLACEHOLDER: Record<string, string> = {
 interface CheckModalProps {
   habit: Habit
   onClose: () => void
-  onSuccess: (pts: number) => void
+  onSuccess: () => void           // cierre inmediato, sin pts
+  onError:   () => void           // revertir si el servidor falla
+  onPts:     (pts: number) => void // animación de pts cuando llega la confirmación
 }
 
-export default function CheckModal({ habit, onClose, onSuccess }: CheckModalProps) {
+export default function CheckModal({ habit, onClose, onSuccess, onError, onPts }: CheckModalProps) {
   const [valor, setValor] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null)
 
   useEffect(() => {
@@ -39,7 +40,6 @@ export default function CheckModal({ habit, onClose, onSuccess }: CheckModalProp
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setLoading(true)
 
     const formData = new FormData()
     formData.set('habit_id', habit.id)
@@ -49,16 +49,18 @@ export default function CheckModal({ habit, onClose, onSuccess }: CheckModalProp
       formData.set('nota', valor)
     }
 
+    // ── Cierre instantáneo ────────────────────────────────
+    onSuccess()
+
+    // ── Servidor en background ────────────────────────────
     const result = await checkHabitAction(formData)
-    setLoading(false)
 
     if (result?.error) {
-      setError(result.error)
-      return
+      onError()          // revertir
+    } else if (result?.pts) {
+      onPts(result.pts)  // mostrar float y sumar al topbar
+      window.dispatchEvent(new CustomEvent('habit-pts', { detail: result.pts }))
     }
-
-    onSuccess(result.pts ?? 0)
-    onClose()
   }
 
   const esNota = habit.campo_extra === 'nota'
@@ -68,17 +70,20 @@ export default function CheckModal({ habit, onClose, onSuccess }: CheckModalProp
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
       <div
-        className="relative w-full max-w-lg bg-surface rounded-t-3xl p-6 animate-sheet-up"
+        className="relative w-full max-w-lg rounded-t-3xl p-6 animate-sheet-up"
+        style={{ background: '#0F1120' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Handle */}
-        <div className="w-10 h-1 bg-surface-3 rounded-full mx-auto mb-6" />
+        <div className="w-10 h-1 rounded-full mx-auto mb-6" style={{ background: 'rgba(255,255,255,.15)' }} />
 
         <div className="flex items-center gap-3 mb-6">
           <span className="text-3xl">{habit.emoji}</span>
           <div>
             <h2 className="text-lg font-bold text-white">{habit.nombre}</h2>
-            <p className="text-text-dim text-sm">{CAMPO_LABEL[habit.campo_extra]}</p>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,.4)' }}>
+              {CAMPO_LABEL[habit.campo_extra]}
+            </p>
           </div>
         </div>
 
@@ -91,7 +96,8 @@ export default function CheckModal({ habit, onClose, onSuccess }: CheckModalProp
               maxLength={500}
               rows={4}
               placeholder={CAMPO_PLACEHOLDER[habit.campo_extra]}
-              className="w-full bg-surface-2 border border-surface-3 rounded-xl2 px-4 py-3 text-white placeholder-text-muted focus:outline-none focus:border-accent resize-none transition-colors"
+              className="w-full rounded-xl px-4 py-3 text-white placeholder-white/25 focus:outline-none resize-none"
+              style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)' }}
             />
           ) : (
             <input
@@ -103,28 +109,28 @@ export default function CheckModal({ habit, onClose, onSuccess }: CheckModalProp
               min="0"
               max="9999"
               placeholder={CAMPO_PLACEHOLDER[habit.campo_extra]}
-              className="w-full bg-surface-2 border border-surface-3 rounded-xl2 px-4 py-5 text-white text-4xl font-mono text-center placeholder-text-muted focus:outline-none focus:border-accent transition-colors"
+              className="w-full rounded-xl px-4 py-5 text-white text-4xl font-mono text-center placeholder-white/20 focus:outline-none"
+              style={{ background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.1)' }}
             />
           )}
 
-          {error && (
-            <p className="text-red-soft text-sm mt-2">{error}</p>
-          )}
+          {error && <p className="text-red-400 text-sm mt-2">{error}</p>}
 
           <div className="flex gap-3 mt-4">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 bg-surface-2 text-text-dim font-semibold py-3.5 rounded-xl2 transition-colors"
+              className="flex-1 font-semibold py-3.5 rounded-xl transition-colors"
+              style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(255,255,255,.5)' }}
             >
               Cancelar
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className="flex-1 bg-accent hover:bg-accent-dim disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl2 transition-colors"
+              className="flex-1 font-semibold py-3.5 rounded-xl transition-colors"
+              style={{ background: '#7c6fff', color: '#fff' }}
             >
-              {loading ? 'Guardando...' : 'Completar'}
+              Completar
             </button>
           </div>
         </form>
