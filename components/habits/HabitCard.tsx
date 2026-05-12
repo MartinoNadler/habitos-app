@@ -35,56 +35,49 @@ export default function HabitCard({
 }: HabitCardProps) {
   const color = HABIT_COLORS[index % HABIT_COLORS.length]
 
-  const [showModal, setShowModal]       = useState(false)
-  const [ptsAnim, setPtsAnim]           = useState<number | null>(null)
-  const [loading, setLoading]           = useState(false)
+  const [showModal, setShowModal]             = useState(false)
+  const [ptsAnim, setPtsAnim]                 = useState<number | null>(null)
   const [localCompletado, setLocalCompletado] = useState(!!habit.record)
   const procesando = useRef(false)
 
   const completado = localCompletado || !!habit.record
   const weekSet = new Set(weekCompleted)
 
-  // Un solo handler para completar Y deshacer — el ref bloquea cualquier doble-tap
+  // Un solo handler para completar Y deshacer — sin loading state para respuesta instantánea
   async function handleToggle() {
     if (procesando.current) return   // bloqueo sincrónico: ningún tap extra pasa
     procesando.current = true
 
     if (completado) {
-      // ── DESHACER ──────────────────────────────────────
-      setLoading(true)
-      setLocalCompletado(false)                // optimista
-
+      // ── DESHACER — optimista inmediato ─────────────────
+      setLocalCompletado(false)
       const fd = new FormData()
       fd.set('habit_id', habit.id)
       fd.set('fecha', today)
       const result = await undoCheckAction(fd)
-
-      setLoading(false)
       procesando.current = false
-
-      if (result?.error) setLocalCompletado(true)  // revertir si falló
+      if (result?.error) {
+        setLocalCompletado(true)  // revertir si falló
+      } else if (habit.record?.pts) {
+        window.dispatchEvent(new CustomEvent('habit-pts', { detail: -habit.record.pts }))
+      }
     } else {
-      // ── COMPLETAR ─────────────────────────────────────
+      // ── COMPLETAR — optimista inmediato ────────────────
       if (habit.campo_extra !== 'ninguno') {
         setShowModal(true)
         procesando.current = false
         return
       }
-
-      setLocalCompletado(true)                 // optimista
-      setLoading(true)
-
+      setLocalCompletado(true)
       const fd = new FormData()
       fd.set('habit_id', habit.id)
       const result = await checkHabitAction(fd)
-
-      setLoading(false)
       procesando.current = false
-
       if (result?.error) {
         setLocalCompletado(false)              // revertir si falló
       } else if (result?.pts) {
         setPtsAnim(result.pts)
+        window.dispatchEvent(new CustomEvent('habit-pts', { detail: result.pts }))
       }
     }
   }
@@ -102,9 +95,8 @@ export default function HabitCard({
           border: `1px solid ${completado ? `${color}30` : 'rgba(255,255,255,.06)'}`,
           borderRadius: 16,
           padding: '14px 14px 12px 18px',
-          opacity: loading ? 0.6 : 1,
           transform: visible ? 'translateY(0)' : 'translateY(12px)',
-          transition: `opacity 0.2s, transform 0.4s cubic-bezier(0.4, 0, 0.2, 1) ${index * 50}ms, border-color 0.3s`,
+          transition: `transform 0.4s cubic-bezier(0.4, 0, 0.2, 1) ${index * 50}ms, border-color 0.3s, background 0.3s`,
         }}
       >
         {/* Accent bar izquierdo */}
@@ -233,29 +225,16 @@ export default function HabitCard({
           {/* Botón toggle — completa Y deshace */}
           <button
             onClick={handleToggle}
-            disabled={loading}
             aria-label={completado ? `Deshacer ${habit.nombre}` : `Completar ${habit.nombre}`}
-            className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 transition-all active:scale-90"
+            className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90"
             style={{
               background: completado ? `${color}20` : 'rgba(255,255,255,.05)',
               border: `2px solid ${completado ? color : 'rgba(255,255,255,.1)'}`,
-              cursor: loading ? 'wait' : 'pointer',
               boxShadow: completado ? `0 0 18px ${color}35` : 'none',
-              transition: 'background 0.25s, border-color 0.25s, box-shadow 0.25s',
+              transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.1s',
             }}
           >
-            {loading ? (
-              /* Spinner mínimo mientras espera la respuesta */
-              <div
-                style={{
-                  width: 14, height: 14,
-                  borderRadius: '50%',
-                  border: `2px solid ${color}40`,
-                  borderTopColor: color,
-                  animation: 'spin 0.6s linear infinite',
-                }}
-              />
-            ) : completado ? (
+            {completado ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
