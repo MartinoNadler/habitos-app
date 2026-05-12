@@ -370,8 +370,8 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
-                    <p className="font-black leading-none" style={{ fontSize: 44, color: cc, letterSpacing: '-2px' }}>
-                      {s.pctCumplimiento}<span style={{ fontSize: 20, opacity: 0.6 }}>%</span>
+                    <p className="font-mono font-bold leading-none" style={{ fontSize: 44, color: cc, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
+                      {s.pctCumplimiento}<span style={{ fontSize: 18, opacity: 0.5, fontWeight: 500, letterSpacing: 0 }}>%</span>
                     </p>
                     <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 2 }}>{periodoLabel}</p>
                   </div>
@@ -509,9 +509,9 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
           }}>
             <div className="flex items-center gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-black leading-none" style={{ fontSize: 56, color: '#fff', letterSpacing: '-2px' }}>
+                <p className="font-mono font-bold leading-none" style={{ fontSize: 58, color: '#fff', letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
                   {pctPromedioGeneral}
-                  <span style={{ fontSize: 28, color: 'rgba(255,255,255,.4)', letterSpacing: '-1px' }}>%</span>
+                  <span style={{ fontSize: 24, color: 'rgba(255,255,255,.3)', fontWeight: 500, letterSpacing: 0 }}>%</span>
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,.35)' }}>
                   cumplimiento · {periodoLabel}
@@ -630,7 +630,7 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
                             )}
                             {isLast && s.pctCumplimiento < 50 && habitStatsSorted.length > 1 && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                                style={{ background: 'rgba(255,107,107,.12)', color: '#FF7070' }}>atención</span>
+                                style={{ background: 'rgba(255,107,107,.12)', color: '#FF7070' }}>crítico</span>
                             )}
                           </div>
                           {/* Barra */}
@@ -652,7 +652,7 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
                           {/* Subtítulo */}
                           <div className="flex items-center gap-3 mt-1">
                             <span style={{ fontSize: 10, color: 'rgba(255,255,255,.28)' }}>
-                              {s.completadosPeriodo} completaciones
+                              {s.completadosPeriodo} cumplidos
                             </span>
                             {s.rachaActual > 0 && (
                               <span style={{ fontSize: 10, color: 'rgba(255,255,255,.28)' }}>
