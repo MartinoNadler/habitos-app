@@ -24,6 +24,15 @@ interface HabitCardProps {
   visible: boolean
 }
 
+function streakStyle(s: number): { color: string; bg: string; border: string; emoji: string } {
+  if (s >= 30) return { color: '#FFC857', bg: 'rgba(255,200,87,.12)',  border: 'rgba(255,200,87,.28)',  emoji: '🏆' }
+  if (s >= 14) return { color: '#FF6B3D', bg: 'rgba(255,107,61,.12)',  border: 'rgba(255,107,61,.28)',  emoji: '🔥' }
+  if (s >= 7)  return { color: '#FF7A3D', bg: 'rgba(255,122,61,.12)',  border: 'rgba(255,122,61,.25)',  emoji: '🔥' }
+  if (s >= 3)  return { color: '#FF9A5C', bg: 'rgba(255,154,92,.1)',   border: 'rgba(255,154,92,.2)',   emoji: '🔥' }
+  if (s >= 1)  return { color: 'rgba(255,255,255,.5)', bg: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.1)', emoji: '✦' }
+  return       { color: 'rgba(255,255,255,.3)', bg: 'transparent',              border: 'transparent',            emoji: '' }
+}
+
 export default function HabitCard({
   habit,
   index,
@@ -38,6 +47,7 @@ export default function HabitCard({
   const [showModal, setShowModal]             = useState(false)
   const [ptsAnim, setPtsAnim]                 = useState<number | null>(null)
   const [localCompletado, setLocalCompletado] = useState(!!habit.record)
+  const [streakLocal, setStreakLocal]         = useState(streakActual)
   const procesando = useRef(false)
 
   // localCompletado es la única fuente de verdad para la UI
@@ -53,13 +63,15 @@ export default function HabitCard({
     if (completado) {
       // ── DESHACER — optimista inmediato ─────────────────
       setLocalCompletado(false)
+      setStreakLocal(prev => Math.max(0, prev - 1))
       const fd = new FormData()
       fd.set('habit_id', habit.id)
       fd.set('fecha', today)
       const result = await undoCheckAction(fd)
       procesando.current = false
       if (result?.error) {
-        setLocalCompletado(true)  // revertir si falló
+        setLocalCompletado(true)              // revertir si falló
+        setStreakLocal(streakActual)
       } else if (habit.record?.pts) {
         window.dispatchEvent(new CustomEvent('habit-pts', { detail: -habit.record.pts }))
       }
@@ -71,12 +83,14 @@ export default function HabitCard({
         return
       }
       setLocalCompletado(true)
+      setStreakLocal(prev => prev + 1)
       const fd = new FormData()
       fd.set('habit_id', habit.id)
       const result = await checkHabitAction(fd)
       procesando.current = false
       if (result?.error) {
-        setLocalCompletado(false)              // revertir si falló
+        setLocalCompletado(false)             // revertir si falló
+        setStreakLocal(streakActual)
       } else if (result?.pts) {
         setPtsAnim(result.pts)
         window.dispatchEvent(new CustomEvent('habit-pts', { detail: result.pts }))
@@ -134,28 +148,33 @@ export default function HabitCard({
                 <span
                   className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
                   style={{
-                    background: streakActual >= (habit.meta_semanal ?? 3)
+                    background: streakLocal >= (habit.meta_semanal ?? 3)
                       ? 'rgba(92,255,123,.12)' : 'rgba(255,255,255,.06)',
-                    color: streakActual >= (habit.meta_semanal ?? 3)
+                    color: streakLocal >= (habit.meta_semanal ?? 3)
                       ? '#5CFF7B' : 'rgba(255,255,255,.4)',
-                    border: `1px solid ${streakActual >= (habit.meta_semanal ?? 3)
+                    border: `1px solid ${streakLocal >= (habit.meta_semanal ?? 3)
                       ? 'rgba(92,255,123,.25)' : 'rgba(255,255,255,.1)'}`,
                   }}
                 >
-                  {streakActual}/{habit.meta_semanal ?? 3} sem
+                  {streakLocal}/{habit.meta_semanal ?? 3} sem
                 </span>
-              ) : streakActual >= 2 ? (
-                // Badge: racha de días
-                <span
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                  style={{
-                    background: 'rgba(255,122,61,.12)',
-                    color: '#FF7A3D',
-                    border: '1px solid rgba(255,122,61,.2)',
-                  }}
-                >
-                  🔥 {streakActual}d
-                </span>
+              ) : streakLocal >= 1 ? (
+                // Badge: racha de días — color por milestone
+                (() => {
+                  const s = streakStyle(streakLocal)
+                  return (
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 transition-all duration-300"
+                      style={{
+                        background: s.bg,
+                        color: s.color,
+                        border: `1px solid ${s.border}`,
+                      }}
+                    >
+                      {s.emoji} {streakLocal}d
+                    </span>
+                  )
+                })()
               ) : null}
               {completado && habit.record && (
                 <span
@@ -252,13 +271,14 @@ export default function HabitCard({
           habit={habit}
           onClose={() => { setShowModal(false); procesando.current = false }}
           onSuccess={() => {
-            // Cierre inmediato — el servidor sigue en background
             setShowModal(false)
             setLocalCompletado(true)
+            setStreakLocal(prev => prev + 1)
             procesando.current = false
           }}
           onError={() => {
-            setLocalCompletado(false) // revertir si el servidor falló
+            setLocalCompletado(false)
+            setStreakLocal(streakActual)
           }}
           onPts={(pts) => setPtsAnim(pts)}
         />
