@@ -11,17 +11,25 @@ export interface HabitDato {
   habit: HabitWithRecord
   index: number
   streakActual: number
-  weekCompleted: string[] // fechas de los últimos 7 días donde se completó
+  weekCompleted: string[]
+}
+
+export interface ResumenSemanalData {
+  estaSemanaCumplidos:   number
+  semanaPasadaCumplidos: number
+  porDia:                number[]  // [Lun=0 … Dom=6]
+  mejorHabito:           { nombre: string; emoji: string } | null
 }
 
 interface HoyContentProps {
-  state: UserState
-  habitDatos: HabitDato[]
-  weekDates: string[]   // últimos 7 días como YYYY-MM-DD, de más viejo a hoy
-  today: string
-  completadosHoy: number
-  totalHabitos: number
-  displayName?: string
+  state:           UserState
+  habitDatos:      HabitDato[]
+  weekDates:       string[]
+  today:           string
+  completadosHoy:  number
+  totalHabitos:    number
+  displayName?:    string
+  resumenSemanal:  ResumenSemanalData
 }
 
 function getHeroData(
@@ -77,6 +85,94 @@ function getHeroData(
   }
 }
 
+const DIAS_SEMANA = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
+
+function ResumenSemanalCard({ data, hoy }: { data: ResumenSemanalData; hoy: string }) {
+  const { estaSemanaCumplidos, semanaPasadaCumplidos, porDia, mejorHabito } = data
+  const maxBar = Math.max(...porDia, 1)
+  const hoyDow = (new Date(hoy + 'T00:00:00').getDay() + 6) % 7  // 0=Lun
+
+  const delta = semanaPasadaCumplidos > 0
+    ? Math.round(((estaSemanaCumplidos - semanaPasadaCumplidos) / semanaPasadaCumplidos) * 100)
+    : null
+
+  return (
+    <div style={{
+      background: 'rgba(16,18,32,.95)',
+      border: '1px solid rgba(255,255,255,.06)',
+      borderRadius: 20,
+      padding: '16px 16px 14px',
+    }}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,.22)' }}>
+          Esta semana
+        </span>
+        {delta !== null && (
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{
+            background: delta >= 0 ? 'rgba(92,255,123,.1)' : 'rgba(255,107,107,.1)',
+            color:      delta >= 0 ? '#5CFF7B' : '#FF6B9D',
+            border:    `1px solid ${delta >= 0 ? 'rgba(92,255,123,.2)' : 'rgba(255,107,107,.2)'}`,
+          }}>
+            {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}% vs sem. ant.
+          </span>
+        )}
+      </div>
+
+      {/* Barras por día */}
+      <div className="flex items-end gap-1.5 mb-3" style={{ height: 48 }}>
+        {DIAS_SEMANA.map((dia, idx) => {
+          const count    = porDia[idx]
+          const isToday  = idx === hoyDow
+          const isFuture = idx > hoyDow
+          const barH     = isFuture ? 3 : count > 0 ? Math.max(Math.round((count / maxBar) * 36), 8) : 3
+
+          return (
+            <div key={idx} className="flex flex-col items-center justify-end gap-1 flex-1" style={{ height: 48 }}>
+              <div style={{
+                width: '100%',
+                height: barH,
+                borderRadius: 3,
+                background: isFuture
+                  ? 'rgba(255,255,255,.04)'
+                  : count > 0
+                  ? isToday ? '#7c6fff' : 'rgba(124,111,255,.45)'
+                  : isToday ? 'rgba(124,111,255,.12)' : 'rgba(255,255,255,.05)',
+                border: isToday && count === 0 ? '1px solid rgba(124,111,255,.25)' : 'none',
+                boxShadow: isToday && count > 0 ? '0 0 8px rgba(124,111,255,.5)' : 'none',
+                transition: 'height 0.5s cubic-bezier(0.4,0,0.2,1)',
+              }} />
+              <span style={{
+                fontSize: 9,
+                lineHeight: 1,
+                color:      isToday ? 'rgba(255,255,255,.6)' : 'rgba(255,255,255,.2)',
+                fontWeight: isToday ? 700 : 400,
+              }}>
+                {dia}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between">
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,.35)' }}>
+          <span className="font-bold text-white">{estaSemanaCumplidos}</span> cumplidos
+          {semanaPasadaCumplidos > 0 && (
+            <span style={{ color: 'rgba(255,255,255,.2)' }}> · {semanaPasadaCumplidos} sem. ant.</span>
+          )}
+        </p>
+        {mejorHabito && estaSemanaCumplidos > 0 && (
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,.3)' }}>
+            {mejorHabito.emoji} <span className="text-white">{mejorHabito.nombre}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function HoyContent({
   state,
   habitDatos,
@@ -85,6 +181,7 @@ export default function HoyContent({
   completadosHoy,
   totalHabitos,
   displayName,
+  resumenSemanal,
 }: HoyContentProps) {
   const [visible, setVisible] = useState(false)
   useEffect(() => {
@@ -198,6 +295,19 @@ export default function HoyContent({
             </div>
           </div>
         </div>
+
+        {/* ── RESUMEN SEMANAL ── */}
+        {(resumenSemanal.estaSemanaCumplidos > 0 || resumenSemanal.semanaPasadaCumplidos > 0) && (
+          <div
+            style={{
+              transform: visible ? 'translateY(0)' : 'translateY(14px)',
+              opacity:   visible ? 1 : 0,
+              transition: 'all 0.5s cubic-bezier(0.4,0,0.2,1) 100ms',
+            }}
+          >
+            <ResumenSemanalCard data={resumenSemanal} hoy={today} />
+          </div>
+        )}
 
         {/* ── HÁBITOS ── */}
         <section>

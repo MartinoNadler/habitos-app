@@ -217,6 +217,37 @@ export default async function HoyPage() {
   const totalHabitos = habitsProgramadosHoy.length
   const displayName: string | undefined = user.user_metadata?.display_name || undefined
 
+  // ── Resumen semanal ───────────────────────────────────────────────────────
+  const lunesEstaSemana = getLunes(hoy)
+  const lunesSemanaPasada = (() => {
+    const d = new Date(lunesEstaSemana + 'T00:00:00'); d.setDate(d.getDate() - 7)
+    return d.toISOString().split('T')[0]
+  })()
+  const domingoSemanaPasada = (() => {
+    const d = new Date(lunesEstaSemana + 'T00:00:00'); d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  })()
+
+  const recEstaSemana   = recordsRecientes.filter(r => r.fecha >= lunesEstaSemana)
+  const recSemanaPasada = recordsRecientes.filter(r => r.fecha >= lunesSemanaPasada && r.fecha <= domingoSemanaPasada)
+
+  // Completados por día de esta semana [Lun=0 … Dom=6]
+  const porDia = Array(7).fill(0) as number[]
+  recEstaSemana.forEach(r => { porDia[(new Date(r.fecha + 'T00:00:00').getDay() + 6) % 7]++ })
+
+  // Hábito con más completaciones esta semana
+  const habitCount: Record<string, number> = {}
+  recEstaSemana.forEach(r => { habitCount[r.habit_id] = (habitCount[r.habit_id] ?? 0) + 1 })
+  const mejorHabitoId  = Object.entries(habitCount).sort(([,a],[,b]) => b - a)[0]?.[0]
+  const mejorHabitoObj = mejorHabitoId ? habits.find(h => h.id === mejorHabitoId) ?? null : null
+
+  const resumenSemanal = {
+    estaSemanaCumplidos:  recEstaSemana.length,
+    semanaPasadaCumplidos: recSemanaPasada.length,
+    porDia,
+    mejorHabito: mejorHabitoObj ? { nombre: mejorHabitoObj.nombre, emoji: mejorHabitoObj.emoji } : null,
+  }
+
   return (
     <div className="min-h-dvh" style={{ background: 'radial-gradient(ellipse at top, #111827, #090B14)' }}>
       <TopBar titulo="Hoy" fecha={formatearFecha(hoy)} puntos={state.puntos} />
@@ -228,6 +259,7 @@ export default async function HoyPage() {
         completadosHoy={completadosHoy}
         totalHabitos={totalHabitos}
         displayName={displayName}
+        resumenSemanal={resumenSemanal}
       />
       <BottomNav />
     </div>
