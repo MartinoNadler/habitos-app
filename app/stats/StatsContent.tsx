@@ -5,6 +5,7 @@ import Heatmap from '@/components/progress/Heatmap'
 import TrendChart from '@/components/progress/TrendChart'
 import ProgressRing from '@/components/ui/ProgressRing'
 import { BADGES } from '@/lib/logic/badges'
+import { getNivel, NIVELES } from '@/lib/types'
 import type { Habit, UserState, UserBadge } from '@/lib/types'
 
 // ── Paleta ───────────────────────────────────────────────────────────────────
@@ -151,6 +152,11 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
   // ── Records del período ──────────────────────────────────────────────────
   const desde = useMemo(() => fechaDesde(periodo), [periodo])
 
+  const ayer = useMemo(() => {
+    const d = new Date(hoy + 'T00:00:00'); d.setDate(d.getDate() - 1)
+    return d.toISOString().split('T')[0]
+  }, [hoy])
+
   const recordsPeriodo = useMemo(
     () => allRecords.filter(r => r.fecha >= desde && r.fecha <= hoy),
     [allRecords, desde, hoy]
@@ -206,8 +212,11 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
     const hRec = allRecords.filter(r => r.habit_id === h.id)
     const creacion = h.creado_en.split('T')[0]
     const desdeEfectivo = creacion > desde ? creacion : desde
+    // Completados incluyen hoy (suma positiva), pero el denominador sólo cuenta
+    // hasta ayer — hoy todavía no terminó, no puede penalizar.
     const completadosVentana = hRec.filter(r => r.fecha >= desdeEfectivo && r.fecha <= hoy).length
-    const esperados = ocurrenciasEsperadas(h, desdeEfectivo, hoy)
+    const hastaEsperado = ayer >= desdeEfectivo ? ayer : desdeEfectivo
+    const esperados = ocurrenciasEsperadas(h, desdeEfectivo, hastaEsperado)
     const pctCumplimiento = Math.min(Math.round((completadosVentana / esperados) * 100), 100)
     const conValor = hRec.filter(r => r.valor != null)
     const promedio = conValor.length > 0
@@ -220,7 +229,7 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
       completadosPeriodo: completadosVentana,
       promedio, mejorRacha, rachaActual, pctCumplimiento,
     }
-  }), [habits, allRecords, desde, hoy])
+  }), [habits, allRecords, desde, ayer, hoy])
 
   const habitStatsSorted = useMemo(
     () => [...habitStats].sort((a, b) => b.pctCumplimiento - a.pctCumplimiento),
@@ -236,6 +245,10 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
   const pctPromedioGeneral = habitStats.length > 0
     ? Math.round(habitStats.reduce((s, h) => s + h.pctCumplimiento, 0) / habitStats.length) : 0
   const diasConActividad   = new Set(recordsVista.map(r => r.fecha)).size
+
+  const nivel    = getNivel(state.puntos)
+  const nivelNum = NIVELES.findIndex(n => state.puntos >= n.min && state.puntos < n.max) + 1 || NIVELES.length
+  const nivelSig = NIVELES[nivelNum] // puede ser undefined en nivel máximo
   const ptsSemanaActual    = puntosSemanales[puntosSemanales.length - 1]?.value ?? 0
   const ptsSemanaAnterior  = puntosSemanales[puntosSemanales.length - 2]?.value ?? 0
   const deltaSemana = ptsSemanaAnterior > 0
@@ -549,6 +562,55 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
             </div>
           </div>
 
+          {/* ── NIVEL ─────────────────────────────────────────────────── */}
+          <div className="rounded-2xl p-4" style={{
+            background: 'linear-gradient(135deg, rgba(124,111,255,.07), rgba(77,141,255,.04))',
+            border: '1px solid rgba(124,111,255,.14)',
+            ...fadeIn(60),
+          }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-base flex-shrink-0"
+                  style={{ background: 'rgba(124,111,255,.18)', color: '#9B8FFF', letterSpacing: '-0.5px' }}>
+                  {nivelNum}
+                </div>
+                <div>
+                  <p className="font-bold text-white text-sm">{nivel.nombre}</p>
+                  <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)' }}>Nivel {nivelNum}</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center gap-1 justify-end">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#FFC857" stroke="none"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                  <span className="font-mono font-bold text-sm" style={{ color: '#FFC857' }}>{state.puntos}</span>
+                </div>
+                {nivelSig && (
+                  <p style={{ fontSize: 10, color: 'rgba(255,255,255,.28)', marginTop: 2 }}>
+                    Faltan {nivelSig.min - state.puntos} pts
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.06)' }}>
+              <div style={{
+                height: '100%',
+                width: `${nivel.progreso}%`,
+                background: 'linear-gradient(90deg, #7c6fff, #4D8DFF)',
+                borderRadius: 'inherit',
+                boxShadow: '0 0 8px rgba(124,111,255,.5)',
+                transition: 'width 1.2s cubic-bezier(0.4,0,0.2,1) 300ms',
+              }} />
+            </div>
+
+            {nivelSig && (
+              <div className="flex justify-between mt-1.5">
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,.18)' }}>{nivel.min} pts</span>
+                <span style={{ fontSize: 10, color: 'rgba(255,255,255,.18)' }}>{nivelSig.min} pts</span>
+              </div>
+            )}
+          </div>
+
           {/* Insights rápidos */}
           {tengoHabits && (
             <div className="grid grid-cols-3 gap-2" style={fadeIn(80)}>
@@ -633,7 +695,7 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
                                 style={{ background: 'rgba(255,184,0,.15)', color: '#FFB800' }}>top</span>
                             )}
-                            {isLast && s.pctCumplimiento < 50 && habitStatsSorted.length > 1 && (
+                            {isLast && s.pctCumplimiento < 50 && s.completados > 0 && habitStatsSorted.length > 1 && (
                               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
                                 style={{ background: 'rgba(255,107,107,.12)', color: '#FF7070' }}>crítico</span>
                             )}
