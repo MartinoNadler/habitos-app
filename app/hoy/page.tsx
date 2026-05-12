@@ -170,7 +170,7 @@ export default async function HoyPage() {
 
   const [stateRes, habitsRes, recordsHoyRes, recordsRecientesRes] = await Promise.all([
     supabase.from('user_state').select('*').eq('user_id', user.id).single(),
-    supabase.from('habits').select('*').eq('user_id', user.id).eq('activo', true).order('creado_en'),
+    supabase.from('habits').select('*').eq('user_id', user.id).eq('activo', true).order('orden', { ascending: true, nullsFirst: false }).order('creado_en'),
     supabase.from('records').select('*').eq('user_id', user.id).eq('fecha', hoy),
     supabase.from('records').select('habit_id, fecha').eq('user_id', user.id).gte('fecha', hace30DiasStr),
   ])

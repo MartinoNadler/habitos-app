@@ -215,6 +215,24 @@ export async function updateHabitAction(formData: FormData) {
   return { ok: true }
 }
 
+export async function reorderHabitsAction(updates: { id: string; orden: number }[]) {
+  if (!updates.length) return { ok: true }
+
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { error: 'No autenticado' }
+
+  await Promise.all(
+    updates.map(({ id, orden }) =>
+      supabase.from('habits').update({ orden }).eq('id', id).eq('user_id', user.id)
+    )
+  )
+
+  revalidatePath('/hoy')
+  revalidatePath('/config')
+  return { ok: true }
+}
+
 export async function deleteHabitAction(formData: FormData) {
   const habitId = UuidSchema.safeParse(formData.get('id'))
   if (!habitId.success) return { error: 'ID inválido' }

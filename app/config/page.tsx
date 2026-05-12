@@ -1,12 +1,21 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import {
+  DndContext, closestCenter, PointerSensor, TouchSensor,
+  useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { createClient } from '@/lib/supabase/client'
 import BottomNav from '@/components/layout/BottomNav'
 import HabitForm from '@/components/habits/HabitForm'
 import RewardForm from './RewardForm'
 import { logoutAction } from '@/app/actions/auth'
-import { deleteHabitAction } from '@/app/actions/habits'
+import { deleteHabitAction, reorderHabitsAction } from '@/app/actions/habits'
 import { deleteRewardAction } from '@/app/actions/rewards'
 import { exportDataAction, deleteAccountAction } from '@/app/actions/account'
 import { Toast } from '@/components/ui/Toast'
@@ -75,6 +84,92 @@ function IconZap({ size = 12, color = '#FFC857' }: { size?: number; color?: stri
   )
 }
 
+function IconGrip() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <line x1="8" y1="6"  x2="16" y2="6"/>
+      <line x1="8" y1="12" x2="16" y2="12"/>
+      <line x1="8" y1="18" x2="16" y2="18"/>
+    </svg>
+  )
+}
+
+// ── Habit row sortable ───────────────────────────────────────────────────────
+function SortableHabitRow({
+  habit, isLast, onEdit, onDelete,
+}: {
+  habit: Habit; isLast: boolean
+  onEdit: () => void; onDelete: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: habit.id })
+
+  const DIAS_CORTOS = ['D', 'L', 'M', 'M', 'J', 'V', 'S']
+  function frecuenciaLabel(h: Habit): string {
+    if (h.frecuencia === 'veces_semana') return `${h.meta_semanal ?? '?'}×/sem`
+    if (h.frecuencia === 'dias_semana')
+      return (h.dias_semana ?? []).sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(d => DIAS_CORTOS[d]).join(' ')
+    return 'diario'
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex items-center gap-3 px-4"
+      style={{
+        paddingTop: 14, paddingBottom: 14,
+        borderBottom: isLast ? 'none' : '1px solid rgba(255,255,255,.04)',
+        opacity:    isDragging ? 0.5 : habit.activo ? 1 : 0.4,
+        background: isDragging ? 'rgba(124,111,255,.06)' : 'transparent',
+        transform:  CSS.Transform.toString(transform),
+        transition: transition ?? 'background 0.2s',
+        touchAction: 'none',
+      }}
+    >
+      {/* Grip handle */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="flex-shrink-0 p-1 rounded-lg cursor-grab active:cursor-grabbing"
+        style={{ color: 'rgba(255,255,255,.2)', touchAction: 'none' }}
+        aria-label="Arrastrar para reordenar"
+      >
+        <IconGrip />
+      </button>
+
+      <span className="text-xl flex-shrink-0">{habit.emoji}</span>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-white text-sm font-medium truncate">{habit.nombre}</p>
+        <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.3)' }}>
+          {habit.categoria} · {habit.esfuerzo} · {frecuenciaLabel(habit)}
+          {!habit.activo && ' · inactivo'}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-0.5">
+        <button
+          onClick={onEdit}
+          className="p-2 rounded-xl transition-all"
+          style={{ color: 'rgba(255,255,255,.3)' }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#8B7CFF'; e.currentTarget.style.background = 'rgba(124,111,255,.1)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.3)'; e.currentTarget.style.background = 'transparent' }}
+        >
+          <IconPencil />
+        </button>
+        <button
+          onClick={onDelete}
+          className="p-2 rounded-xl transition-all"
+          style={{ color: 'rgba(255,255,255,.3)' }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#FF6B6B'; e.currentTarget.style.background = 'rgba(255,107,107,.08)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.3)'; e.currentTarget.style.background = 'transparent' }}
+        >
+          <IconTrash />
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Section header ───────────────────────────────────────────────────────────
 function SectionHeader({ label, onAdd }: { label: string; onAdd: () => void }) {
   return (
@@ -124,6 +219,21 @@ export default function ConfigPage() {
 
   const supabase = createClient()
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor,   { activationConstraint: { delay: 150, tolerance: 6 } }),
+  )
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIdx = habits.findIndex(h => h.id === active.id)
+    const newIdx = habits.findIndex(h => h.id === over.id)
+    const reordered = arrayMove(habits, oldIdx, newIdx)
+    setHabits(reordered)
+    await reorderHabitsAction(reordered.map((h, i) => ({ id: h.id, orden: i })))
+  }
+
   const cargarDatos = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -135,7 +245,7 @@ export default function ConfigPage() {
     setNameInput(nombre)
 
     const [h, r, state, badges] = await Promise.all([
-      supabase.from('habits').select('*').eq('user_id', user.id).order('creado_en'),
+      supabase.from('habits').select('*').eq('user_id', user.id).order('orden', { ascending: true, nullsFirst: false }).order('creado_en'),
       supabase.from('rewards').select('*').eq('user_id', user.id).order('costo'),
       supabase.from('user_state').select('puntos, streak').eq('user_id', user.id).single(),
       supabase.from('user_badges').select('id', { count: 'exact', head: true }).eq('user_id', user.id),
@@ -337,54 +447,24 @@ export default function ConfigPage() {
               <p className="text-sm" style={{ color: 'rgba(255,255,255,.25)' }}>No hay hábitos todavía</p>
             </div>
           ) : (
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{ background: 'rgba(16,18,32,.95)', border: '1px solid rgba(255,255,255,.06)' }}
-            >
-              {habits.map((h, i) => (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={habits.map(h => h.id)} strategy={verticalListSortingStrategy}>
                 <div
-                  key={h.id}
-                  className="flex items-center gap-3 px-4 transition-all"
-                  style={{
-                    paddingTop: 14,
-                    paddingBottom: 14,
-                    borderBottom: i < habits.length - 1 ? '1px solid rgba(255,255,255,.04)' : 'none',
-                    opacity: h.activo ? 1 : 0.4,
-                  }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.02)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  className="rounded-2xl overflow-hidden"
+                  style={{ background: 'rgba(16,18,32,.95)', border: '1px solid rgba(255,255,255,.06)' }}
                 >
-                  <span className="text-xl flex-shrink-0">{h.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{h.nombre}</p>
-                    <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,.3)' }}>
-                      {h.categoria} · {h.esfuerzo} · {frecuenciaLabel(h)}
-                      {!h.activo && ' · inactivo'}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      onClick={() => { setEditHabit(h); setShowHabitForm(true) }}
-                      className="p-2 rounded-xl transition-all"
-                      style={{ color: 'rgba(255,255,255,.3)' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#8B7CFF'; e.currentTarget.style.background = 'rgba(124,111,255,.1)' }}
-                      onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.3)'; e.currentTarget.style.background = 'transparent' }}
-                    >
-                      <IconPencil />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteHabit(h.id)}
-                      className="p-2 rounded-xl transition-all"
-                      style={{ color: 'rgba(255,255,255,.3)' }}
-                      onMouseEnter={e => { e.currentTarget.style.color = '#FF6B6B'; e.currentTarget.style.background = 'rgba(255,107,107,.08)' }}
-                      onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.3)'; e.currentTarget.style.background = 'transparent' }}
-                    >
-                      <IconTrash />
-                    </button>
-                  </div>
+                  {habits.map((h, i) => (
+                    <SortableHabitRow
+                      key={h.id}
+                      habit={h}
+                      isLast={i === habits.length - 1}
+                      onEdit={() => { setEditHabit(h); setShowHabitForm(true) }}
+                      onDelete={() => handleDeleteHabit(h.id)}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+              </SortableContext>
+            </DndContext>
           )}
         </section>
 
