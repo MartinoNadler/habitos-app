@@ -13,7 +13,7 @@ const HABIT_PALETTE = [
 ]
 
 const DIAS_ORDEN_SEMANA = [1, 2, 3, 4, 5, 6, 0]
-const DIAS_FULL = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
 
 interface HabitStats {
   habit: Habit
@@ -91,6 +91,7 @@ export default function StatsContent({
 
   const mejoraPositiva = mejoraMensual >= 0
   const tengoHabits = habitStats.length > 0
+  const mesActual = MESES[new Date().getMonth()]
 
   const promPtsSemanal = puntosSemanales.length > 0
     ? Math.round(puntosSemanales.reduce((s, w) => s + w.value, 0) / puntosSemanales.length)
@@ -301,38 +302,41 @@ export default function StatsContent({
                     </div>
 
                     {/* Stats row */}
-                    <div className="flex items-center gap-4">
-                      {/* Racha actual */}
-                      <div className="flex items-center gap-1">
-                        <span style={{ fontSize: 11 }}>🔥</span>
-                        {esVecesSemana ? (
-                          <span style={{ fontSize: 11, color: s.rachaActual > 0 ? '#FF7A3D' : 'rgba(255,255,255,.25)' }}>
-                            <span className="font-bold text-white">{s.rachaActual}</span>
-                            <span style={{ color: 'rgba(255,255,255,.3)' }}>/{s.habit.meta_semanal ?? 1} esta sem.</span>
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
-                            Racha: <span className="font-semibold" style={{ color: s.rachaActual > 0 ? '#FF7A3D' : 'rgba(255,255,255,.4)' }}>
+                    {s.completados === 0 ? (
+                      <p style={{ fontSize: 11, color: 'rgba(255,255,255,.2)' }}>Sin registros aún</p>
+                    ) : (
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {/* Racha */}
+                        <div className="flex items-center gap-1">
+                          <span style={{ fontSize: 11 }}>🔥</span>
+                          {esVecesSemana ? (
+                            <span style={{ fontSize: 11 }}>
+                              <span className="font-semibold text-white">{s.rachaActual}</span>
+                              <span style={{ color: 'rgba(255,255,255,.3)' }}>/{s.habit.meta_semanal ?? 1} sem.</span>
+                            </span>
+                          ) : (
+                            <span className="font-semibold text-sm" style={{ color: s.rachaActual > 0 ? '#FF7A3D' : 'rgba(255,255,255,.35)' }}>
                               {plural(s.rachaActual, 'día', 'días')}
                             </span>
-                          </span>
+                          )}
+                          {/* Mejor racha solo si es diferente */}
+                          {!esVecesSemana && s.mejorRacha > s.rachaActual && s.mejorRacha > 1 && (
+                            <span style={{ fontSize: 10, color: 'rgba(255,255,255,.25)', marginLeft: 2 }}>
+                              / {s.mejorRacha}d mejor
+                            </span>
+                          )}
+                        </div>
+
+                        {s.diasEsteMes > 0 && (
+                          <>
+                            <span style={{ color: 'rgba(255,255,255,.1)' }}>·</span>
+                            <span style={{ fontSize: 11, color: 'rgba(255,255,255,.35)' }}>
+                              <span className="font-semibold text-white">{s.diasEsteMes}</span> en {mesActual}
+                            </span>
+                          </>
                         )}
                       </div>
-
-                      <span style={{ color: 'rgba(255,255,255,.1)' }}>·</span>
-
-                      {/* Mejor racha */}
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
-                        Mejor: <span className="font-semibold text-white">{plural(s.mejorRacha, 'día', 'días')}</span>
-                      </span>
-
-                      <span style={{ color: 'rgba(255,255,255,.1)' }}>·</span>
-
-                      {/* Este mes */}
-                      <span style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}>
-                        Mes: <span className="font-semibold text-white">{s.diasEsteMes}</span>
-                      </span>
-                    </div>
+                    )}
                   </div>
                 )
               })}
