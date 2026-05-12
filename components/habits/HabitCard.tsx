@@ -40,7 +40,9 @@ export default function HabitCard({
   const [localCompletado, setLocalCompletado] = useState(!!habit.record)
   const procesando = useRef(false)
 
-  const completado = localCompletado || !!habit.record
+  // localCompletado es la única fuente de verdad para la UI
+  // (inicializado desde habit.record al montar, luego controlado localmente)
+  const completado = localCompletado
   const weekSet = new Set(weekCompleted)
 
   // Un solo handler para completar Y deshacer — sin loading state para respuesta instantánea
