@@ -370,9 +370,12 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
-                    <p className="font-mono font-bold leading-none" style={{ fontSize: 44, color: cc, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
-                      {s.pctCumplimiento}<span style={{ fontSize: 18, opacity: 0.5, fontWeight: 500, letterSpacing: 0 }}>%</span>
-                    </p>
+                    <div className="flex items-end gap-0.5 leading-none">
+                      <span className="font-black" style={{ fontSize: 42, color: cc, letterSpacing: '-2px', lineHeight: 1 }}>
+                        {s.pctCumplimiento}
+                      </span>
+                      <span className="font-bold mb-1" style={{ fontSize: 16, color: cc, opacity: 0.5, letterSpacing: 0 }}>%</span>
+                    </div>
                     <p style={{ fontSize: 10, color: 'rgba(255,255,255,.3)', marginTop: 2 }}>{periodoLabel}</p>
                   </div>
                 </div>
@@ -509,10 +512,12 @@ export default function StatsContent({ state, habits, allRecords, badges }: Stat
           }}>
             <div className="flex items-center gap-4">
               <div className="flex-1 min-w-0">
-                <p className="font-mono font-bold leading-none" style={{ fontSize: 58, color: '#fff', letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>
-                  {pctPromedioGeneral}
-                  <span style={{ fontSize: 24, color: 'rgba(255,255,255,.3)', fontWeight: 500, letterSpacing: 0 }}>%</span>
-                </p>
+                <div className="flex items-end gap-1 leading-none">
+                  <span className="font-black" style={{ fontSize: 60, color: '#fff', letterSpacing: '-3px', lineHeight: 1 }}>
+                    {pctPromedioGeneral}
+                  </span>
+                  <span className="font-bold mb-1.5" style={{ fontSize: 20, color: 'rgba(255,255,255,.35)', letterSpacing: 0 }}>%</span>
+                </div>
                 <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,.35)' }}>
                   cumplimiento · {periodoLabel}
                 </p>
