@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import HabitCard from '@/components/habits/HabitCard'
 import { getNivel } from '@/lib/types'
 import type { HabitWithRecord, UserState } from '@/lib/types'
@@ -22,14 +23,15 @@ export interface ResumenSemanalData {
 }
 
 interface HoyContentProps {
-  state:           UserState
-  habitDatos:      HabitDato[]
-  weekDates:       string[]
-  today:           string
-  completadosHoy:  number
-  totalHabitos:    number
-  displayName?:    string
-  resumenSemanal:  ResumenSemanalData
+  state:                UserState
+  habitDatos:           HabitDato[]
+  weekDates:            string[]
+  today:                string
+  completadosHoy:       number
+  totalHabitos:         number
+  totalHabitosActivos:  number
+  displayName?:         string
+  resumenSemanal:       ResumenSemanalData
 }
 
 function getHeroData(
@@ -83,6 +85,92 @@ function getHeroData(
       : `Vas bien — ${total - completados} más para asegurar la racha`,
     color: '#FF7A3D',
   }
+}
+
+const SUGERENCIAS = [
+  { emoji: '💧', nombre: 'Tomar agua' },
+  { emoji: '📚', nombre: 'Leer' },
+  { emoji: '🏃', nombre: 'Ejercicio' },
+  { emoji: '🧘', nombre: 'Meditar' },
+  { emoji: '😴', nombre: 'Dormir temprano' },
+  { emoji: '🥗', nombre: 'Comer bien' },
+]
+
+function EmptyNuevoUsuario({ visible, nombre }: { visible: boolean; nombre?: string }) {
+  return (
+    <div
+      className="rounded-3xl p-8 text-center"
+      style={{
+        background: 'linear-gradient(160deg, rgba(18,20,40,1), rgba(11,12,22,1))',
+        border: '1px solid rgba(255,255,255,.07)',
+        transform: visible ? 'translateY(0)' : 'translateY(14px)',
+        opacity:   visible ? 1 : 0,
+        transition: 'all 0.5s cubic-bezier(0.4,0,0.2,1) 150ms',
+      }}
+    >
+      <div className="text-5xl mb-4">🌱</div>
+      <h2 className="font-bold text-white text-xl mb-2" style={{ letterSpacing: '-0.3px' }}>
+        {nombre ? `¡Empecemos, ${nombre}!` : '¡Empecemos!'}
+      </h2>
+      <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,.38)' }}>
+        Elegí un hábito para arrancar. Podés agregar más después.
+      </p>
+
+      {/* Sugerencias */}
+      <div className="flex flex-wrap justify-center gap-2 mb-6">
+        {SUGERENCIAS.map(s => (
+          <span
+            key={s.nombre}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+            style={{
+              background: 'rgba(255,255,255,.05)',
+              border: '1px solid rgba(255,255,255,.08)',
+              color: 'rgba(255,255,255,.5)',
+            }}
+          >
+            {s.emoji} {s.nombre}
+          </span>
+        ))}
+      </div>
+
+      <Link href="/config">
+        <button
+          className="inline-flex items-center gap-2 font-semibold px-6 py-3 rounded-2xl transition-all active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #7c6fff, #4D8DFF)',
+            color: '#fff',
+            boxShadow: '0 4px 20px rgba(124,111,255,.35)',
+          }}
+        >
+          Crear mi primer hábito
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+          </svg>
+        </button>
+      </Link>
+    </div>
+  )
+}
+
+function EmptyDiaLibre({ visible }: { visible: boolean }) {
+  return (
+    <div
+      className="rounded-2xl py-10 text-center"
+      style={{
+        background: 'rgba(255,255,255,.02)',
+        border: '1px solid rgba(255,255,255,.05)',
+        transform: visible ? 'translateY(0)' : 'translateY(14px)',
+        opacity:   visible ? 1 : 0,
+        transition: 'all 0.5s cubic-bezier(0.4,0,0.2,1) 150ms',
+      }}
+    >
+      <p className="text-4xl mb-3">🌿</p>
+      <p className="font-semibold text-white text-sm">Sin hábitos para hoy</p>
+      <p className="text-xs mt-1.5" style={{ color: 'rgba(255,255,255,.3)' }}>
+        Disfrutá el descanso — mañana volvés
+      </p>
+    </div>
+  )
 }
 
 const DIAS_SEMANA = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
@@ -180,6 +268,7 @@ export default function HoyContent({
   today,
   completadosHoy,
   totalHabitos,
+  totalHabitosActivos,
   displayName,
   resumenSemanal,
 }: HoyContentProps) {
@@ -312,14 +401,9 @@ export default function HoyContent({
         {/* ── HÁBITOS ── */}
         <section>
           {habitDatos.length === 0 ? (
-            <div
-              className="text-center py-16"
-              style={{ color: 'rgba(255,255,255,.25)' }}
-            >
-              <p className="text-5xl mb-4">🌱</p>
-              <p className="font-semibold">No tenés hábitos activos</p>
-              <p className="text-sm mt-1 opacity-70">Agregá uno desde Configuración</p>
-            </div>
+            totalHabitosActivos === 0
+              ? <EmptyNuevoUsuario visible={visible} nombre={displayName} />
+              : <EmptyDiaLibre visible={visible} />
           ) : (
             <div className="space-y-2.5">
               {habitDatos.map(({ habit, index, streakActual, weekCompleted }) => (

@@ -258,6 +258,7 @@ export default async function HoyPage() {
         today={hoy}
         completadosHoy={completadosHoy}
         totalHabitos={totalHabitos}
+        totalHabitosActivos={habits.length}
         displayName={displayName}
         resumenSemanal={resumenSemanal}
       />
