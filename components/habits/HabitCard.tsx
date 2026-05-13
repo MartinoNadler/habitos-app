@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { checkHabitAction, undoCheckAction } from '@/app/actions/habits'
 import CheckModal from './CheckModal'
+import HabitForm from './HabitForm'
 import { PtsFloat } from '@/components/ui/Toast'
 import type { HabitWithRecord } from '@/lib/types'
 
@@ -43,8 +45,10 @@ export default function HabitCard({
   visible,
 }: HabitCardProps) {
   const color = HABIT_COLORS[index % HABIT_COLORS.length]
+  const router = useRouter()
 
   const [showModal, setShowModal]             = useState(false)
+  const [showEditForm, setShowEditForm]       = useState(false)
   const [ptsAnim, setPtsAnim]                 = useState<number | null>(null)
   const [localCompletado, setLocalCompletado] = useState(!!habit.record)
   const [streakLocal, setStreakLocal]         = useState(streakActual)
@@ -243,26 +247,46 @@ export default function HabitCard({
             </div>
           </div>
 
-          {/* Botón toggle — completa Y deshace */}
-          <button
-            onClick={handleToggle}
-            aria-label={completado ? `Deshacer ${habit.nombre}` : `Completar ${habit.nombre}`}
-            className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90"
-            style={{
-              background: completado ? `${color}20` : 'rgba(255,255,255,.05)',
-              border: `2px solid ${completado ? color : 'rgba(255,255,255,.1)'}`,
-              boxShadow: completado ? `0 0 18px ${color}35` : 'none',
-              transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.1s',
-            }}
-          >
-            {completado ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12" />
+          {/* Botones derecha */}
+          <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
+            {/* Editar */}
+            <button
+              onClick={() => setShowEditForm(true)}
+              aria-label={`Editar ${habit.nombre}`}
+              className="w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90"
+              style={{ color: 'rgba(255,255,255,.2)', background: 'transparent' }}
+              onTouchStart={e => { e.currentTarget.style.color = 'rgba(255,255,255,.55)'; e.currentTarget.style.background = 'rgba(255,255,255,.07)' }}
+              onTouchEnd={e => { e.currentTarget.style.color = 'rgba(255,255,255,.2)'; e.currentTarget.style.background = 'transparent' }}
+              onMouseEnter={e => { e.currentTarget.style.color = 'rgba(255,255,255,.55)'; e.currentTarget.style.background = 'rgba(255,255,255,.07)' }}
+              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.2)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
               </svg>
-            ) : (
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,.2)' }} />
-            )}
-          </button>
+            </button>
+
+            {/* Completar / deshacer */}
+            <button
+              onClick={handleToggle}
+              aria-label={completado ? `Deshacer ${habit.nombre}` : `Completar ${habit.nombre}`}
+              className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0 active:scale-90"
+              style={{
+                background: completado ? `${color}20` : 'rgba(255,255,255,.05)',
+                border: `2px solid ${completado ? color : 'rgba(255,255,255,.1)'}`,
+                boxShadow: completado ? `0 0 18px ${color}35` : 'none',
+                transition: 'background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.1s',
+              }}
+            >
+              {completado ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              ) : (
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'rgba(255,255,255,.2)' }} />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -281,6 +305,17 @@ export default function HabitCard({
             setStreakLocal(streakActual)
           }}
           onPts={(pts) => setPtsAnim(pts)}
+        />
+      )}
+
+      {showEditForm && (
+        <HabitForm
+          habit={habit}
+          onClose={() => setShowEditForm(false)}
+          onSuccess={() => {
+            setShowEditForm(false)
+            router.refresh()
+          }}
         />
       )}
     </>
