@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
+import confetti from 'canvas-confetti'
 import HabitCard from '@/components/habits/HabitCard'
 import { getNivel } from '@/lib/types'
 import type { HabitWithRecord, UserState } from '@/lib/types'
@@ -277,6 +278,34 @@ export default function HoyContent({
     const t = setTimeout(() => setVisible(true), 40)
     return () => clearTimeout(t)
   }, [])
+
+  // Confetti al completar todos los hábitos del día
+  const checkedCount   = useRef(completadosHoy)
+  const confettiShown  = useRef(completadosHoy === totalHabitos && totalHabitos > 0)
+
+  useEffect(() => {
+    function onHabitPts(e: Event) {
+      const pts = (e as CustomEvent<number>).detail
+      if (pts > 0) {
+        checkedCount.current++
+        if (checkedCount.current >= totalHabitos && totalHabitos > 0 && !confettiShown.current) {
+          confettiShown.current = true
+          setTimeout(() => {
+            confetti({ particleCount: 90, spread: 70, origin: { y: 0.55 }, colors: ['#7c6fff','#4D8DFF','#5CFF7B','#FFC857','#FF6B9D','#59E1FF'] })
+            setTimeout(() => {
+              confetti({ particleCount: 40, angle: 60,  spread: 50, origin: { x: 0, y: 0.65 }, colors: ['#7c6fff','#FFC857'] })
+              confetti({ particleCount: 40, angle: 120, spread: 50, origin: { x: 1, y: 0.65 }, colors: ['#4D8DFF','#5CFF7B'] })
+            }, 180)
+          }, 350)
+        }
+      } else {
+        checkedCount.current = Math.max(0, checkedCount.current - 1)
+        if (checkedCount.current < totalHabitos) confettiShown.current = false
+      }
+    }
+    window.addEventListener('habit-pts', onHabitPts)
+    return () => window.removeEventListener('habit-pts', onHabitPts)
+  }, [totalHabitos])
 
   const nivel = getNivel(state.puntos)
   const { titulo, subtitulo, color } = getHeroData(state.streak, completadosHoy, totalHabitos, state.best_streak, displayName)

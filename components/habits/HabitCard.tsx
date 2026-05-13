@@ -180,6 +180,15 @@ export default function HabitCard({
                   )
                 })()
               ) : null}
+              {/* Badge valor numérico */}
+              {completado && habit.record?.valor != null && habit.campo_extra !== 'ninguno' && habit.campo_extra !== 'nota' && (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  style={{ background: `${color}18`, color, border: `1px solid ${color}35` }}
+                >
+                  {habit.record.valor} {habit.campo_extra}
+                </span>
+              )}
               {completado && habit.record && (
                 <span
                   className="text-[10px] font-mono font-bold flex-shrink-0"
