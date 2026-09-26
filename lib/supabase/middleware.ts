@@ -23,7 +23,13 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const userResult = await Promise.race([
+    supabase.auth.getUser(),
+    new Promise<{ data: { user: null }; error: Error }>((resolve) =>
+      setTimeout(() => resolve({ data: { user: null }, error: new Error('timeout') }), 4000)
+    ),
+  ])
+  const user = userResult.data.user
 
   const { pathname } = request.nextUrl
   const isAuthPage  = pathname === '/login' || pathname === '/register'
